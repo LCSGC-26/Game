@@ -17,8 +17,8 @@ android {
         applicationId "com.tilekiln.glazeway"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 3
-        versionName "1.1.0"
+        versionCode 4
+        versionName "1.1.1"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -70,6 +70,12 @@ dependencies {
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
     implementation project(':capacitor-cordova-android-plugins')
+
+    // Fourteen: confirms real play and reports crashes during the Google Play
+    // closed test. It only measures testers who connect through Fourteen.
+    // Swap to 'app.getfourteen:sdk-noop:1.0.1' before the production release
+    // (see docs/PUBLISHING.md) and update the Data safety form.
+    implementation 'app.getfourteen:sdk:1.0.1'
 }
 
 apply from: 'capacitor.build.gradle'

@@ -1,6 +1,6 @@
 # Privacy Policy for Glazeway
 
-**Last updated: 23 October 2026**
+**Last updated: 16 November 2026**
 
 This policy explains what Glazeway does with your information. It is short
 because the game does very little.
@@ -16,9 +16,25 @@ us, it is not synced between your devices, and deleting the app deletes it.
 
 ## What we collect
 
-**We collect nothing.** There is no account, no sign-in, no analytics, and no
-telemetry. The game does not send us any information about you or how you
-play, and it works with no network connection at all.
+**From players, we collect nothing.** There is no account, no sign-in, no
+analytics, and no telemetry. The game does not send us any information about
+you or how you play, and it works with no network connection at all.
+
+## Testing builds (Fourteen)
+
+While Glazeway is in Google Play testing, the app includes the **Fourteen**
+testing SDK. It does nothing unless you join the test through Fourteen or a
+Fourteen invite link. If you do, it sends Fourteen a random tester ID (no name
+or email), how long and how often you play, a count of touches, your phone
+maker and model, Android version and country setting, whether the app came
+from Google Play, crash details (the error type and where it happened, never
+the error message), and any bug report you choose to send, with a screenshot
+only if you attach one. It never reads your screen, typing, contacts,
+location or advertising ID.
+
+This is used only to confirm the game is being tested and to find bugs.
+Fourteen's own policy is at https://getfourteen.app/privacy. The SDK is
+removed before the game is released to everyone.
 
 ## Advertising
 

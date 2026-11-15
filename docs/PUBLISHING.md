@@ -270,6 +270,13 @@ is usually hours to a few days.
 
 ## Step 10 — Release to production
 
+**First, take the Fourteen testing SDK out.** In `android/app/build.gradle`,
+change `app.getfourteen:sdk:1.0.1` to `app.getfourteen:sdk-noop:1.0.1` (or delete
+the line), bump the version, rebuild, and upload that build instead. Then
+remove the Fourteen data from the Data safety form, and take the "Testing
+builds (Fourteen)" section out of the privacy policy (`store/PRIVACY.md` and
+the live copy).
+
 1. **Production → Create new release**
 2. Upload the same (or a newer) `.aab`
 3. Paste the release notes from `store/LISTING.md`
