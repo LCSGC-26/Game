@@ -3,6 +3,22 @@
 Where the project stands, and what a cold start needs to know. Sessions run in
 an ephemeral container, so this file is the handover.
 
+## 1.3.0 (18 November 2026): obstacles and cosmetics, built, not yet on a phone
+
+- Obstacles, ruled in `board.ts` and mirrored in the solver: stacked pots
+  (restyled crates), raw clay that must cross a kiln tile before it can
+  leave, wet clay that stops a slide, and kiln doors keyed to another
+  colour. Warm starts them at 30 / 60 / 100, Hot at 20 / 40 / 70, White-hot
+  at 10 / 25 / 50. A tip card introduces each one.
+- Shop: tray rims (Neon kiln, Lava, Raku, Celadon), Ember / Sage / Midnight
+  kiln trays, sparks / steam / spinning-pot exits, kiln-flash and gold-drip
+  wins.
+- Pack version 3. `pack-history.ts` keeps every earlier pack's pars, so a
+  save migrates its stars on every heat. Planning depth: Warm 3.95, Hot 4.74,
+  White-hot 5.21.
+- Signed bundle is versionCode 7. Still to check on the phone: obstacles and
+  tip cards, rims at gates, win effects in a real win, reduce motion.
+
 ## 1.2.0 (18 November 2026): harder levels and Kiln heat
 
 From closed-test feedback ("too easy, no way to make it harder").
