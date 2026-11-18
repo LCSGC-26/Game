@@ -53,4 +53,8 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- The activity is locked to portrait, which Android reads as requiring a
+         portrait screen. Optional, so Play still offers the game on devices
+         without one (Chromebooks, Play Games on PC). -->
+    <uses-feature android:name="android.hardware.screen.portrait" android:required="false" />
 </manifest>
