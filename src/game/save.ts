@@ -9,6 +9,7 @@
  */
 
 import { HEATS, type Heat } from '../engine/generator.ts';
+import { PACK_VERSION } from './pack-history.ts';
 import { defaultDaily, defaultGift, type DailyState, type GiftState } from './daily.ts';
 
 const STORAGE_KEY = 'colourjam.save.v1';
@@ -31,6 +32,10 @@ export interface Settings {
   glaze: string;
   /** Exit effect; an unknown or empty id plays the free default. */
   effect: string;
+  /** Tray rim id; '' is the theme's own rim. */
+  rim: string;
+  /** Win effect id; '' is the plain win. */
+  winEffect: string;
   /** Character id sitting beside the board, or '' for nobody. */
   companion: string;
   /** Kiln heat for levels started from the map: Warm is the main pack. */
@@ -60,9 +65,13 @@ export interface SaveData {
   goalsClaimed: string[];
   /** Blocks flicked out through their gates, for the ledger. */
   flicks: number;
-  /** Bought glaze and effect ids; free defaults need no entry. */
+  /** Bought glaze, effect, rim and win effect ids; free defaults need no entry. */
   ownedGlazes: string[];
   ownedEffects: string[];
+  ownedRims: string[];
+  ownedWinEffects: string[];
+  /** First-sighting tip cards already shown (obstacle ids). */
+  tipsSeen: string[];
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -74,6 +83,8 @@ export const DEFAULT_SETTINGS: Settings = {
   theme: 'slate',
   glaze: 'gloss',
   effect: '',
+  rim: '',
+  winEffect: '',
   companion: '',
   heat: 'warm',
 };
@@ -84,7 +95,7 @@ export function defaultSave(): SaveData {
     highestUnlocked: 1,
     bestMoves: {},
     heatBest: { hot: {}, white: {} },
-    packVersion: 2,
+    packVersion: PACK_VERSION,
     coins: 0,
     unlockedThemes: ['slate'],
     adsRemoved: false,
@@ -98,6 +109,9 @@ export function defaultSave(): SaveData {
     flicks: 0,
     ownedGlazes: [],
     ownedEffects: [],
+    ownedRims: [],
+    ownedWinEffects: [],
+    tipsSeen: [],
   };
 }
 
@@ -177,6 +191,9 @@ export function reconcile(raw: unknown): SaveData {
     theme: typeof storedSettings.theme === 'string' ? storedSettings.theme : base.settings.theme,
     glaze: typeof storedSettings.glaze === 'string' ? storedSettings.glaze : base.settings.glaze,
     effect: typeof storedSettings.effect === 'string' ? storedSettings.effect : base.settings.effect,
+    rim: typeof storedSettings.rim === 'string' ? storedSettings.rim : base.settings.rim,
+    winEffect:
+      typeof storedSettings.winEffect === 'string' ? storedSettings.winEffect : base.settings.winEffect,
     companion: typeof storedSettings.companion === 'string' ? storedSettings.companion : base.settings.companion,
     heat: HEATS.includes(storedSettings.heat as Heat) ? (storedSettings.heat as Heat) : 'warm',
   };
@@ -216,6 +233,9 @@ export function reconcile(raw: unknown): SaveData {
     flicks: whole(raw.flicks) ?? 0,
     ownedGlazes: [...new Set(strings(raw.ownedGlazes))],
     ownedEffects: [...new Set(strings(raw.ownedEffects))],
+    ownedRims: [...new Set(strings(raw.ownedRims))],
+    ownedWinEffects: [...new Set(strings(raw.ownedWinEffects))],
+    tipsSeen: [...new Set(strings(raw.tipsSeen))],
   };
 }
 

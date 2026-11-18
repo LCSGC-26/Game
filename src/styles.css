@@ -1584,8 +1584,8 @@ hr {
 /* Shop sections: chunky tabs moulded into one strip. */
 .shop-tabs {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 6px;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
   max-width: 540px;
   width: 100%;
   margin: 0 auto;
@@ -1604,8 +1604,16 @@ hr {
   color: var(--muted);
   font-family: var(--font-display);
   font-weight: 800;
-  font-size: 0.86rem;
+  font-size: 0.82rem;
   cursor: pointer;
+}
+
+.shop-group {
+  margin: 14px 4px 2px;
+  color: var(--muted);
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 0.9rem;
 }
 
 .shop-tab.on {
@@ -1749,4 +1757,44 @@ hr {
 
 .companion[hidden] {
   display: none;
+}
+
+.tip-card {
+  text-align: left;
+}
+
+.tip-card h2 {
+  text-align: center;
+}
+
+.tip-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* A fixed icon column, so every tip's text lines up whatever its icon's width. */
+.tip-row {
+  display: grid;
+  grid-template-columns: 104px 1fr;
+  align-items: center;
+  gap: 12px;
+}
+
+.tip-row canvas {
+  justify-self: center;
+  max-width: 104px;
+  border-radius: 8px;
+}
+
+.tip-row h3 {
+  margin: 0 0 2px;
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+}
+
+.tip-row p {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.35;
 }

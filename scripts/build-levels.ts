@@ -26,6 +26,7 @@ import { fileURLToPath } from 'node:url';
 import { applyMove, isSolved } from '../src/engine/board.ts';
 import { generateLevel, HEATS, type Heat, measureDifficulty, profileForLevel } from '../src/engine/generator.ts';
 import { solve } from '../src/engine/solver.ts';
+import { PACK_VERSION } from '../src/game/pack-history.ts';
 import { cloneLevel, type Level } from '../src/engine/types.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -155,7 +156,7 @@ await Promise.all(
 for (const heat of HEATS) {
   const levels = results.get(heat)!.sort((a, b) => a.id - b.id);
   levels.forEach((level) => verify(level, heat));
-  writeFileSync(join(gameDir, PACK_FILES[heat]), JSON.stringify({ version: 2, heat, levels }));
+  writeFileSync(join(gameDir, PACK_FILES[heat]), JSON.stringify({ version: PACK_VERSION, heat, levels }));
   const ds = levels.map(measureDifficulty);
   const mean = (xs: number[]) => (xs.reduce((a, b) => a + b, 0) / xs.length).toFixed(2);
   const shallow = ds.filter((d) => d.depth <= 1).length;

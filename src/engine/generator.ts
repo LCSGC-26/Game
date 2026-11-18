@@ -93,6 +93,40 @@ export interface DifficultyProfile {
   minDepth: number;
   /** How many separate times the solution needs a run of 2+ setup moves. */
   minThinks: number;
+  /** Obstacles placed on top of the built board (see OBSTACLE_START). */
+  obstacles: Obstacles;
+}
+
+export interface Obstacles {
+  /** Raw clay blocks, each with a kiln tile somewhere on the floor. */
+  raw: number;
+  /** Wet clay floor cells. */
+  wet: number;
+  /** Kiln doors: gates keyed to another colour. */
+  doors: number;
+}
+
+const NO_OBSTACLES: Obstacles = { raw: 0, wet: 0, doors: 0 };
+
+/**
+ * First level of each obstacle, per heat. The first level an obstacle
+ * appears on has that obstacle alone, so its tip card has a clear example.
+ */
+export const OBSTACLE_START: Record<Heat, Record<keyof Obstacles, number>> = {
+  warm: { raw: 30, wet: 60, doors: 100 },
+  hot: { raw: 20, wet: 40, doors: 70 },
+  white: { raw: 10, wet: 25, doors: 50 },
+};
+
+export function obstaclesFor(id: number, heat: Heat): Obstacles {
+  const start = OBSTACLE_START[heat];
+  for (const kind of ['raw', 'wet', 'doors'] as const) {
+    if (id === start[kind]) return { ...NO_OBSTACLES, [kind]: 1 };
+  }
+  // A second raw block and a second wet patch arrive 40 levels after the first.
+  const count = (kind: keyof Obstacles, max: number): number =>
+    id < start[kind] ? 0 : Math.min(max, 1 + Math.floor((id - start[kind]) / 40));
+  return { raw: count('raw', 2), wet: count('wet', 2), doors: count('doors', 1) };
 }
 
 /**
@@ -113,7 +147,19 @@ function band(
   shapePool: Cell[][],
   scramble: [number, number],
 ): DifficultyProfile {
-  return { width, height, blockCount, colorCount, crateCount, extraMoves: detours, minDepth, minThinks, shapePool, scramble };
+  return {
+    width,
+    height,
+    blockCount,
+    colorCount,
+    crateCount,
+    extraMoves: detours,
+    minDepth,
+    minThinks,
+    shapePool,
+    scramble,
+    obstacles: NO_OBSTACLES,
+  };
 }
 
 function warmProfile(id: number): DifficultyProfile {
@@ -145,9 +191,8 @@ function whiteProfile(id: number): DifficultyProfile {
 }
 
 export function profileForLevel(id: number, heat: Heat = 'warm'): DifficultyProfile {
-  if (heat === 'hot') return hotProfile(id);
-  if (heat === 'white') return whiteProfile(id);
-  return warmProfile(id);
+  const base = heat === 'hot' ? hotProfile(id) : heat === 'white' ? whiteProfile(id) : warmProfile(id);
+  return { ...base, obstacles: obstaclesFor(id, heat) };
 }
 
 export interface Difficulty {
@@ -436,7 +481,7 @@ function buildCandidate(
     blocks.push({ id: nextId++, color: p.color, kind: 'block', shape: p.shape, pos: p.pos, exited: false });
   }
 
-  return {
+  const level: Level = {
     id,
     seed,
     width: profile.width,
@@ -445,6 +490,43 @@ function buildCandidate(
     gates: [...gates.values()],
     minMoves: 0,
   };
+  placeObstacles(rng, level, profile.obstacles, occupied);
+  return level;
+}
+
+/**
+ * Adds obstacles to a built board. Obstacles only ever restrict, so the
+ * board may no longer be winnable: the solver run that follows is what
+ * decides, and an unwinnable candidate is simply skipped.
+ */
+function placeObstacles(rng: Rng, level: Level, obstacles: Obstacles, occupied: Uint8Array): void {
+  // No obstacles: touch nothing, not even the random stream, so boards
+  // before an obstacle's first level stay exactly as they were.
+  if (obstacles.raw + obstacles.wet + obstacles.doors === 0) return;
+  const free = rng.shuffle(
+    [...Array(level.width * level.height).keys()].filter((i) => !occupied[i]).map((i) => ({ x: i % level.width, y: Math.floor(i / level.width) })),
+  );
+  const playable = rng.shuffle(level.blocks.filter((b) => b.kind === 'block'));
+
+  if (obstacles.raw > 0) {
+    const raw = playable.slice(0, Math.min(obstacles.raw, playable.length));
+    raw.forEach((b) => (b.raw = true));
+    level.kilns = free.splice(0, raw.length);
+  }
+  if (obstacles.wet > 0) {
+    // Never on a gate's own edge lane, so a block can always reach a gate flush.
+    const wet: Cell[] = [];
+    while (wet.length < obstacles.wet && free.length) {
+      const c = free.shift()!;
+      const onEdge = c.x === 0 || c.y === 0 || c.x === level.width - 1 || c.y === level.height - 1;
+      if (!onEdge) wet.push(c);
+    }
+    if (wet.length) level.wet = wet;
+  }
+  if (obstacles.doors > 0 && level.gates.length > 1) {
+    const [door, keyGate] = rng.shuffle([...level.gates]);
+    door.key = keyGate.color;
+  }
 }
 
 export interface GenerateOptions {
@@ -487,6 +569,16 @@ function isExit(level: Level, move: Move): boolean {
  * slide, so the level stays winnable; each new start is re-solved, so par and
  * the stored solution stay exact.
  */
+/** Every raw block is still raw, and none starts on a kiln tile. */
+function rawIntact(before: Level, after: Level): boolean {
+  const kilns = new Set((after.kilns ?? []).map((c) => c.y * after.width + c.x));
+  return after.blocks.every((b, i) => {
+    if (!before.blocks[i].raw) return true;
+    if (!b.raw) return false;
+    return b.shape.every((c) => !kilns.has((b.pos.y + c.y) * after.width + b.pos.x + c.x));
+  });
+}
+
 function climbStart(
   rng: Rng,
   level: Level,
@@ -512,6 +604,8 @@ function climbStart(
       if (moves.length === 0) break;
       applyMove(next, rng.pick(moves));
     }
+    // The nudges must not fire raw clay or park it on a kiln before play starts.
+    if (!rawIntact(level, next)) continue;
     const result = solve(next, { maxStates: hintBudget });
     if (!result.solved || result.minMoves > maxMoves) continue;
     next.minMoves = result.minMoves;

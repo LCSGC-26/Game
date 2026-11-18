@@ -29,7 +29,14 @@ const MAX_PARTICLES = 260;
 
 /* ------------------------------------------------------------ exit effects */
 
-const EFFECT_MS: Record<EffectId, number> = { 'kiln-puff': 440, petals: 480, 'glaze-splash': 420 };
+const EFFECT_MS: Record<EffectId, number> = {
+  'kiln-puff': 440,
+  petals: 480,
+  'glaze-splash': 420,
+  sparks: 380,
+  steam: 720,
+  'spinning-pot': 520,
+};
 const MAX_EXIT_EFFECTS = 12;
 
 function easeOut(p: number): number {
@@ -71,6 +78,19 @@ interface Drop {
   r0: number;
 }
 
+interface Spark {
+  angle: number;
+  speed: number;
+  len: number;
+  warm: number;
+}
+interface Wisp {
+  dx: number;
+  delay: number;
+  r: number;
+  drift: number;
+}
+
 interface ExitFx {
   kind: EffectId;
   /** Milliseconds since the block crossed the gate line. */
@@ -86,6 +106,34 @@ interface ExitFx {
   glint: string;
   petals: Petal[];
   drops: Drop[];
+  sparks: Spark[];
+  wisps: Wisp[];
+}
+
+/** Warm spark tones, hottest first. */
+const SPARK_TONES = ['#fff0c2', '#ffcf6b', '#ff9a3c'];
+
+function buildSparks(seed: number, rotDeg: number): Spark[] {
+  const r = seededRng(seed);
+  const list: Spark[] = [];
+  for (let i = 0; i < 8; i++) {
+    list.push({
+      angle: -55 + (i / 7) * 110 + (r() - 0.5) * 14 + rotDeg,
+      speed: 30 + r() * 24,
+      len: 5 + r() * 5,
+      warm: i % 3,
+    });
+  }
+  return list;
+}
+
+function buildWisps(seed: number): Wisp[] {
+  const r = seededRng(seed);
+  const list: Wisp[] = [];
+  for (let i = 0; i < 4; i++) {
+    list.push({ dx: (i - 1.5) * 7 + (r() - 0.5) * 4, delay: i * 70, r: 4 + r() * 2.5, drift: (r() - 0.5) * 10 });
+  }
+  return list;
 }
 
 function buildPetals(seed: number, rotDeg: number): Petal[] {
@@ -158,6 +206,8 @@ export class Particles {
       glint: tint(colour, effect === 'glaze-splash' ? 0.65 : 0.6),
       petals: effect === 'petals' ? buildPetals(seed, rotDeg) : [],
       drops: effect === 'glaze-splash' ? buildDrops(seed, rotDeg) : [],
+      sparks: effect === 'sparks' ? buildSparks(seed, rotDeg) : [],
+      wisps: effect === 'steam' ? buildWisps(seed) : [],
     });
   }
 
@@ -302,6 +352,85 @@ export class Particles {
         ctx.fill();
         ctx.restore();
       }
+    } else if (fx.kind === 'sparks') {
+      const D = 380;
+      const lp = clamp01(t / D);
+      const e = easeOut(lp);
+      ctx.lineCap = 'round';
+      ctx.lineWidth = 1.8 * k;
+      for (const sp of fx.sparks) {
+        const a = 1 - clamp01((lp - 0.45) / 0.55);
+        if (a <= 0.01) continue;
+        const ang = (sp.angle * Math.PI) / 180;
+        const dist = sp.speed * e * k;
+        const px = fx.x + Math.cos(ang) * dist;
+        const py = fx.y + Math.sin(ang) * dist + 10 * lp * lp * k;
+        // A short streak trailing back along the way it came.
+        const tail = sp.len * (1 - lp * 0.6) * k;
+        ctx.globalAlpha = a;
+        ctx.strokeStyle = SPARK_TONES[sp.warm];
+        ctx.beginPath();
+        ctx.moveTo(px - Math.cos(ang) * tail, py - Math.sin(ang) * tail);
+        ctx.lineTo(px, py);
+        ctx.stroke();
+      }
+      ctx.lineCap = 'butt';
+    } else if (fx.kind === 'steam') {
+      const D = 720;
+      for (const w of fx.wisps) {
+        if (t < w.delay) continue;
+        const lp = clamp01((t - w.delay) / (D - w.delay));
+        const a = 0.55 * (1 - clamp01((lp - 0.35) / 0.65));
+        if (a <= 0.01) continue;
+        // Three soft puffs strung up the wisp, the lowest the youngest.
+        for (let n = 0; n < 3; n++) {
+          const q = clamp01(lp - n * 0.12);
+          const e = easeOut(q);
+          const px = fx.x + (w.dx + w.drift * e + Math.sin(q * 5 + n) * 2) * k;
+          const py = fx.y - (4 + 30 * e) * k;
+          ctx.globalAlpha = a * (1 - n * 0.22);
+          ctx.fillStyle = '#e9eef2';
+          ctx.beginPath();
+          ctx.arc(px, py, (w.r * (0.7 + 0.8 * e) - n * 0.4) * k, 0, TAU);
+          ctx.fill();
+        }
+      }
+    } else if (fx.kind === 'spinning-pot') {
+      const D = 520;
+      const lp = clamp01(t / D);
+      const e = easeOut(lp);
+      const scale = (1 - 0.8 * Math.pow(lp, 1.6)) * 1.15 * k;
+      const a = 1 - clamp01((lp - 0.7) / 0.3);
+      const dist = 30 * e * k;
+      ctx.save();
+      ctx.translate(fx.x + cosR * dist, fx.y + sinR * dist);
+      ctx.rotate(lp * TAU * 1.5);
+      ctx.scale(scale, scale);
+      ctx.globalAlpha = a;
+      const pot = (dy: number, colour: string): void => {
+        ctx.fillStyle = colour;
+        ctx.beginPath();
+        // Foot, round belly, narrow neck and a flared lip.
+        ctx.moveTo(-4, 9 + dy);
+        ctx.bezierCurveTo(-11, 5 + dy, -11, -4 + dy, -5, -6 + dy);
+        ctx.lineTo(-5.5, -9 + dy);
+        ctx.lineTo(-7, -9 + dy);
+        ctx.lineTo(-7, -11 + dy);
+        ctx.lineTo(7, -11 + dy);
+        ctx.lineTo(7, -9 + dy);
+        ctx.lineTo(5.5, -9 + dy);
+        ctx.lineTo(5, -6 + dy);
+        ctx.bezierCurveTo(11, -4 + dy, 11, 5 + dy, 4, 9 + dy);
+        ctx.closePath();
+        ctx.fill();
+      };
+      pot(1.6, fx.under);
+      pot(0, fx.colour);
+      ctx.fillStyle = fx.glint;
+      ctx.beginPath();
+      ctx.ellipse(-4.6, 0, 1.6, 3.6, 0.2, 0, TAU);
+      ctx.fill();
+      ctx.restore();
     } else {
       const D = 420;
       const lp = clamp01(t / D);

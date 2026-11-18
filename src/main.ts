@@ -14,6 +14,7 @@ import { Haptics, ImpactStyle, NotificationType } from '@capacitor/haptics';
 import { DragController } from './game/input.ts';
 import { LEVEL_COUNT, PACK_VERSION, getLevel } from './game/levels.ts';
 import { migrateBestMoves } from './game/migrate.ts';
+import { PAR_HISTORY } from './game/pack-history.ts';
 import { HEAT_NAMES, bestOn, bestStars, clearedCount, isCleared, levelReward, starsOn } from './game/records.ts';
 import { HEATS, type Heat } from './engine/generator.ts';
 import { Session } from './game/session.ts';
@@ -21,8 +22,10 @@ import {
   blockCentre,
   canvasScale,
   computeViewport,
+  drawObstacleIcon,
   invalidateStaticLayer,
   render,
+  type ObstacleIcon,
   type Viewport,
 } from './game/render.ts';
 import { BLOCK_COLOURS, THEMES, themeById } from './game/theme.ts';
@@ -58,7 +61,18 @@ import {
   characterSideUrl,
   nextGiftCharacter,
 } from './game/characters.ts';
-import { EFFECTS, GLAZES, effectById, glazeById } from './game/cosmetics.ts';
+import {
+  ANIMATED_RIMS,
+  EFFECTS,
+  GLAZES,
+  RIMS,
+  WIN_EFFECTS,
+  effectById,
+  glazeById,
+  rimById,
+  winEffectById,
+} from './game/cosmetics.ts';
+import { winEffectSeconds, type WinFx } from './game/rim.ts';
 import { generateLevel } from './engine/generator.ts';
 import type { Dir, Level } from './engine/types.ts';
 import type { Chapter } from './game/chapters.ts';
@@ -73,9 +87,13 @@ const $ = <T extends HTMLElement>(id: string): T => {
 
 let saveData = store.load();
 
-// Levels 4 to 200 were rebuilt in pack 2: restate old records in the new pars.
+// Shipped levels were rebuilt since this save was made: restate its records
+// in the new pars, on every heat, so no earned star is lost.
 if (saveData.packVersion < PACK_VERSION) {
-  saveData.bestMoves = migrateBestMoves(saveData.bestMoves, (id) => getLevel(id)?.minMoves ?? null);
+  const oldPars = PAR_HISTORY[saveData.packVersion] ?? {};
+  saveData.bestMoves = migrateBestMoves(saveData.bestMoves, oldPars.warm, (id) => getLevel(id, 'warm')?.minMoves ?? null);
+  saveData.heatBest.hot = migrateBestMoves(saveData.heatBest.hot, oldPars.hot, (id) => getLevel(id, 'hot')?.minMoves ?? null);
+  saveData.heatBest.white = migrateBestMoves(saveData.heatBest.white, oldPars.white, (id) => getLevel(id, 'white')?.minMoves ?? null);
   saveData.packVersion = PACK_VERSION;
   store.save(saveData);
 }
@@ -341,14 +359,15 @@ function stepChapter(delta: number): void {
   renderChapter();
 }
 
-type ShopTab = 'themes' | 'characters' | 'glazes' | 'effects';
+type ShopTab = 'themes' | 'characters' | 'glazes' | 'effects' | 'rims';
 let shopTab: ShopTab = 'themes';
 
 const SHOP_LEADS: Record<ShopTab, string> = {
   themes: 'Themes restyle the tray and the light. The tile colours never change, because they carry the rules.',
   characters: 'Friends who live along the chapter roads. Pick one to keep you company beside the board.',
   glazes: 'A finish for every tile. The colours stay exactly the same in every glaze.',
-  effects: 'What happens when a block slides out through its gate.',
+  effects: 'What happens when a block slides out through its gate, and when you clear a level.',
+  rims: 'A band set into the edge of the tray. It never touches the tiles.',
 };
 
 /** One shop row: a picture or swatches on the left, a single action on the right. */
@@ -502,18 +521,13 @@ function renderShop(): void {
     return;
   }
 
-  const items = shopTab === 'glazes' ? GLAZES : EFFECTS;
-  const ownedList = shopTab === 'glazes' ? saveData.ownedGlazes : saveData.ownedEffects;
-  const current = shopTab === 'glazes' ? glazeById(saveData.settings.glaze).id : effectById(saveData.settings.effect).id;
-  for (const item of items) {
-    const select = (): void => {
-      if (shopTab === 'glazes') {
-        saveData.settings.glaze = item.id;
-        invalidateStaticLayer();
-      } else {
-        saveData.settings.effect = item.id;
-      }
-    };
+  /** One cosmetic row: the same buy / use / in-use flow for every category. */
+  const cosmeticRow = (
+    item: { id: string; name: string; price: number; blurb: string },
+    ownedList: string[],
+    current: string,
+    select: () => void,
+  ): void => {
     const action = shopAction({
       owned: item.price === 0 || ownedList.includes(item.id),
       active: current === item.id,
@@ -529,6 +543,48 @@ function renderShop(): void {
       },
     });
     list.append(shopRow(null, item.name, item.blurb, action));
+  };
+  const heading = (text: string): void => {
+    const h = document.createElement('div');
+    h.className = 'shop-group';
+    h.textContent = text;
+    list.append(h);
+  };
+
+  if (shopTab === 'glazes') {
+    const current = glazeById(saveData.settings.glaze).id;
+    for (const item of GLAZES) {
+      cosmeticRow(item, saveData.ownedGlazes, current, () => {
+        saveData.settings.glaze = item.id;
+        invalidateStaticLayer();
+      });
+    }
+    return;
+  }
+
+  if (shopTab === 'rims') {
+    const current = rimById(saveData.settings.rim).id;
+    for (const item of RIMS) {
+      cosmeticRow(item, saveData.ownedRims, current, () => {
+        saveData.settings.rim = item.id;
+        invalidateStaticLayer();
+      });
+    }
+    return;
+  }
+
+  const currentEffect = effectById(saveData.settings.effect).id;
+  for (const item of EFFECTS) {
+    cosmeticRow(item, saveData.ownedEffects, currentEffect, () => {
+      saveData.settings.effect = item.id;
+    });
+  }
+  heading('Win effects');
+  const currentWin = winEffectById(saveData.settings.winEffect).id;
+  for (const item of WIN_EFFECTS) {
+    cosmeticRow(item, saveData.ownedWinEffects, currentWin, () => {
+      saveData.settings.winEffect = item.id;
+    });
   }
 }
 
@@ -827,6 +883,9 @@ function maybeShowGift(): void {
 function celebrate(): void {
   sfx.win();
   buzz('win');
+  winFxId = winEffectById(saveData.settings.winEffect).id;
+  winFxStartMs = winFxId === '' ? -1 : performance.now();
+  if (winFxStartMs >= 0) requestDraw();
   if (!saveData.settings.reduceMotion) {
     particles.celebrate(canvas.width / canvasScale(), BLOCK_COLOURS);
     requestDraw();
@@ -1051,10 +1110,49 @@ function requestDraw(): void {
   requestAnimationFrame(frame);
 }
 
+/** An animated rim needs frames while the board is showing, never under reduce motion. */
+function rimIsAnimating(rim: string): boolean {
+  return (
+    !saveData.settings.reduceMotion &&
+    (ANIMATED_RIMS as string[]).includes(rim) &&
+    $('overlay-win').hidden
+  );
+}
+
+/** Win effect in progress (id and seconds since the win), or null. Ends itself. */
+let winFxId = '';
+let winFxStartMs = -1;
+
+function currentWinFx(nowMs: number): WinFx | null {
+  if (winFxStartMs < 0 || winFxId === '') return null;
+  const reduced = saveData.settings.reduceMotion;
+  // Frame timestamps and performance.now() share a clock; clamp so the first
+  // frame after the win never reads a negative time.
+  const t = Math.max(0, (nowMs - winFxStartMs) / 1000);
+  if (t >= winEffectSeconds(winFxId as WinFx['id'], reduced)) {
+    winFxStartMs = -1;
+    return null;
+  }
+  return { id: winFxId as WinFx['id'], t, reduced };
+}
+
 function frame(nowMs: number): void {
   framePending = false;
   if (!session || $('screen-game').hidden) {
     lastFrameMs = 0;
+    return;
+  }
+
+  const rim = rimById(saveData.settings.rim).id;
+  const rimMoves = rimIsAnimating(rim);
+  const winFx = currentWinFx(nowMs);
+  const otherMotion =
+    !saveData.settings.reduceMotion && (particles.count > 0 || hintedBlocks.length > 0);
+
+  // An animated rim alone does not need 60 fps: hold it to about 30, except
+  // while a finger is dragging, when the board must follow without lag.
+  if (rimMoves && !otherMotion && !winFx && !drag.visual && lastFrameMs !== 0 && nowMs - lastFrameMs < 30) {
+    requestDraw();
     return;
   }
 
@@ -1070,10 +1168,12 @@ function frame(nowMs: number): void {
     particles.clear();
   }
 
-  render(ctx!, session.level, viewport, {
+  const animating = render(ctx!, session.level, viewport, {
     theme: themeById(saveData.settings.theme),
     glyphs: saveData.settings.colourBlindShapes,
     glaze: glazeById(saveData.settings.glaze).id,
+    rim,
+    winFx,
     time: clock,
     reduceMotion: saveData.settings.reduceMotion,
     drag: drag.visual,
@@ -1081,8 +1181,7 @@ function frame(nowMs: number): void {
     particles,
   });
 
-  const moving = !saveData.settings.reduceMotion && (particles.count > 0 || hintedBlocks.length > 0);
-  if (moving) requestDraw();
+  if (otherMotion || rimMoves || winFx || animating) requestDraw();
   else lastFrameMs = 0;
 }
 
@@ -1146,12 +1245,7 @@ function checkComplete(): void {
   saveData.levelsSinceLastAd++;
   persist();
 
-  sfx.win();
-  buzz('win');
-  if (!saveData.settings.reduceMotion) {
-    particles.celebrate(canvas.width / canvasScale(), BLOCK_COLOURS);
-    requestDraw();
-  }
+  celebrate();
 
   $('btn-win-levels').textContent = 'Levels';
   $('win-title').textContent = currentLevelId >= LEVEL_COUNT ? 'Final level complete' : 'Level complete';
@@ -1212,12 +1306,92 @@ function beginSession(level: Level, chapter: Chapter): void {
   session = new Session(level);
   placeCompanion();
   hintedBlocks = [];
+  winFxStartMs = -1;
   particles.clear();
   drag.cancel();
   $('overlay-win').hidden = true;
   showScreen('game');
   updateHud();
   resizeCanvas();
+  showObstacleTips(level);
+}
+
+/* ----------------------------------------------------------------- tips */
+
+interface ObstacleTip {
+  id: string;
+  icon: ObstacleIcon;
+  title: string;
+  text: string;
+  seenIn: (level: Level) => boolean;
+}
+
+/** In priority order; a level with several new obstacles lists each on one card. */
+const OBSTACLE_TIPS: ObstacleTip[] = [
+  {
+    id: 'pots',
+    icon: 'pots',
+    title: 'Stacked pots',
+    text: 'They never move. Plan around them.',
+    seenIn: (l) => l.blocks.some((b) => b.kind === 'crate'),
+  },
+  {
+    id: 'raw',
+    icon: 'raw',
+    title: 'Raw clay',
+    text: "Can't leave yet. Slide it over a kiln tile to fire it, then it can go out through its gate.",
+    seenIn: (l) => l.blocks.some((b) => b.raw === true),
+  },
+  {
+    id: 'wet',
+    icon: 'wet',
+    title: 'Wet clay',
+    text: 'Stops a sliding block dead. Slide on again next move.',
+    seenIn: (l) => (l.wet?.length ?? 0) > 0,
+  },
+  {
+    id: 'door',
+    icon: 'door',
+    title: 'Kiln door',
+    text: 'Opens once a block of the colour on its badge has gone out.',
+    seenIn: (l) => l.gates.some((g) => g.key !== undefined),
+  },
+];
+
+/** One card, one tap, the first time a level shows an obstacle the player has not met. */
+function showObstacleTips(level: Level): void {
+  const fresh = OBSTACLE_TIPS.filter((t) => t.seenIn(level) && !saveData.tipsSeen.includes(t.id));
+  if (fresh.length === 0) return;
+
+  const list = $('tip-list');
+  list.textContent = '';
+  const theme = themeById(saveData.settings.theme);
+  for (const tip of fresh) {
+    const row = document.createElement('div');
+    row.className = 'tip-row';
+    const icon = document.createElement('canvas');
+    icon.setAttribute('aria-hidden', 'true');
+    drawObstacleIcon(icon, tip.icon, theme, saveData.settings.colourBlindShapes);
+    const copy = document.createElement('div');
+    const title = document.createElement('h3');
+    title.textContent = tip.title;
+    const text = document.createElement('p');
+    text.textContent = tip.text;
+    copy.append(title, text);
+    row.append(icon, copy);
+    list.append(row);
+    saveData.tipsSeen.push(tip.id);
+  }
+  persist();
+  $('overlay-tip').hidden = false;
+}
+
+/** Dev only: start a board from a Level object, e.g. one made in the console. */
+if (import.meta.env.DEV) {
+  const dev = window as unknown as Record<string, unknown>;
+  dev.glazewayPlay = (level: Level) => beginSession(level, CHAPTERS[0]);
+  dev.glazewaySession = () => session;
+  dev.glazewayDraw = () => requestDraw();
 }
 
 /** Leaves the board for the home screen, or for a screen reached from it. */
@@ -1243,6 +1417,7 @@ function leaveLevel(to: ScreenId = 'home'): void {
 
   session = null;
   dailyDay = null;
+  winFxStartMs = -1;
   particles.clear();
   drag.cancel();
   $('overlay-win').hidden = true;
@@ -1338,6 +1513,9 @@ function bindNavigation(): void {
   }
   $<HTMLImageElement>('home-daily-icon').src = depthUrl('icon-daily-kiln.svg');
   $('btn-daily-play').addEventListener('click', startDaily);
+  $('tip-ok').addEventListener('click', () => {
+    $('overlay-tip').hidden = true;
+  });
   $('gift-close').addEventListener('click', () => {
     $('overlay-gift').hidden = true;
   });

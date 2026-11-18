@@ -24,11 +24,7 @@ const PACKS: Record<Heat, Pack> = {
   white: whitePack as unknown as Pack,
 };
 
-/**
- * Version of the Warm pack. 1 shipped up to 1.1.1; 2 rebuilt levels 4 to 200
- * for more planning (see migrate.ts).
- */
-export const PACK_VERSION = PACKS.warm.version;
+export { PACK_VERSION } from './pack-history.ts';
 
 export const LEVEL_COUNT = PACKS.warm.levels.length;
 

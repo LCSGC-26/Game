@@ -14,9 +14,11 @@
  * carry the rules, and every animation stops when "reduce motion" is on.
  */
 
-import { blockCells, type Block, type Level } from '../engine/types.ts';
-import type { GlazeId } from './cosmetics.ts';
+import { gateIsOpen } from '../engine/board.ts';
+import { blockCells, type Block, type Gate, type Level } from '../engine/types.ts';
+import type { GlazeId, RimId } from './cosmetics.ts';
 import type { Particles } from './particles.ts';
+import { drawRimLive, drawRimStatic, drawWinEffect, type WinFx } from './rim.ts';
 import { blockColour, blockGlyph, shade, tint, withAlpha, type GlyphShape, type Theme } from './theme.ts';
 
 export interface Viewport {
@@ -43,6 +45,10 @@ export interface RenderOptions {
   particles?: Particles;
   /** Tile finish. Defaults to 'gloss', which is the original look. */
   glaze?: GlazeId;
+  /** Tray rim; '' or missing is the theme's own. */
+  rim?: RimId;
+  /** A win effect in progress, drawn over the tray. */
+  winFx?: WinFx | null;
 }
 
 /**
@@ -262,6 +268,7 @@ function drawGlyph(
   cy: number,
   size: number,
   fill: string,
+  outline?: string,
 ): void {
   const r = size / 2;
   ctx.fillStyle = fill;
@@ -303,6 +310,12 @@ function drawGlyph(
   }
   ctx.closePath();
   ctx.fill('nonzero');
+  if (outline) {
+    ctx.strokeStyle = outline;
+    ctx.lineWidth = Math.max(1.4, size * 0.12);
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+  }
 }
 
 /* ------------------------------------------------------------------ gates */
@@ -382,50 +395,85 @@ function mouldedArrow(
   ctx.restore();
 }
 
+interface GateGeometry {
+  horizontal: boolean;
+  /** The cutout through the frame. */
+  sx: number;
+  sy: number;
+  sw: number;
+  sh: number;
+  slotRadius: number;
+  /** The painted lip seated inside the cutout. */
+  bx: number;
+  by: number;
+  bw: number;
+  bh: number;
+  barRadius: number;
+}
+
+function gateGeometry(level: Level, vp: Viewport, gate: Gate): GateGeometry {
+  const { cell, wall, originX, originY } = vp;
+  const boardW = level.width * cell;
+  const boardH = level.height * cell;
+  const horizontal = gate.side === 'top' || gate.side === 'bottom';
+  const span = gate.length * cell;
+  const inset = Math.max(2, cell * 0.05);
+
+  let sx = 0;
+  let sy = 0;
+  let sw = 0;
+  let sh = 0;
+  if (gate.side === 'top') {
+    sx = originX + gate.start * cell + inset;
+    sy = originY - wall;
+    sw = span - inset * 2;
+    sh = wall + 1;
+  } else if (gate.side === 'bottom') {
+    sx = originX + gate.start * cell + inset;
+    sy = originY + boardH - 1;
+    sw = span - inset * 2;
+    sh = wall + 1;
+  } else if (gate.side === 'left') {
+    sx = originX - wall;
+    sy = originY + gate.start * cell + inset;
+    sw = wall + 1;
+    sh = span - inset * 2;
+  } else {
+    sx = originX + boardW - 1;
+    sy = originY + gate.start * cell + inset;
+    sw = wall + 1;
+    sh = span - inset * 2;
+  }
+
+  const slotRadius = Math.max(3, wall * 0.24);
+  const pad = Math.max(2, wall * 0.2);
+  return {
+    horizontal,
+    sx,
+    sy,
+    sw,
+    sh,
+    slotRadius,
+    bx: sx + (horizontal ? 0 : pad),
+    by: sy + (horizontal ? pad : 0),
+    bw: sw - (horizontal ? 0 : pad * 2),
+    bh: sh - (horizontal ? pad * 2 : 0),
+    barRadius: Math.max(2, slotRadius * 0.65),
+  };
+}
+
 function drawGates(
   ctx: CanvasRenderingContext2D,
   level: Level,
   vp: Viewport,
   options: RenderOptions,
 ): void {
-  const { cell, wall, originX, originY } = vp;
-  const boardW = level.width * cell;
-  const boardH = level.height * cell;
+  const { wall } = vp;
   const theme = options.theme;
 
   for (const gate of level.gates) {
     const colour = blockColour(gate.color);
-    const horizontal = gate.side === 'top' || gate.side === 'bottom';
-    const span = gate.length * cell;
-    const inset = Math.max(2, cell * 0.05);
-
-    let sx = 0;
-    let sy = 0;
-    let sw = 0;
-    let sh = 0;
-    if (gate.side === 'top') {
-      sx = originX + gate.start * cell + inset;
-      sy = originY - wall;
-      sw = span - inset * 2;
-      sh = wall + 1;
-    } else if (gate.side === 'bottom') {
-      sx = originX + gate.start * cell + inset;
-      sy = originY + boardH - 1;
-      sw = span - inset * 2;
-      sh = wall + 1;
-    } else if (gate.side === 'left') {
-      sx = originX - wall;
-      sy = originY + gate.start * cell + inset;
-      sw = wall + 1;
-      sh = span - inset * 2;
-    } else {
-      sx = originX + boardW - 1;
-      sy = originY + gate.start * cell + inset;
-      sw = wall + 1;
-      sh = span - inset * 2;
-    }
-
-    const slotRadius = Math.max(3, wall * 0.24);
+    const { horizontal, sx, sy, sw, sh, slotRadius } = gateGeometry(level, vp, gate);
     const slot = (): void =>
       roundRectPath(ctx, sx, sy, sw, sh, {
         tl: slotRadius,
@@ -443,12 +491,7 @@ function drawGates(
     innerShadow(ctx, slot, wall * 0.45, wall * 0.12, 'rgba(0,0,0,0.7)');
 
     // The painted lip of the slot, seated below the frame's top face.
-    const pad = Math.max(2, wall * 0.2);
-    const bx = sx + (horizontal ? 0 : pad);
-    const by = sy + (horizontal ? pad : 0);
-    const bw = sw - (horizontal ? 0 : pad * 2);
-    const bh = sh - (horizontal ? pad * 2 : 0);
-    const barRadius = Math.max(2, slotRadius * 0.65);
+    const { bx, by, bw, bh, barRadius } = gateGeometry(level, vp, gate);
 
     ctx.fillStyle = shade(colour, 0.3);
     box(ctx, bx, by, bw, bh, barRadius);
@@ -717,10 +760,17 @@ function drawBlock(
   options: RenderOptions,
   dx: number,
   dy: number,
+  glow = 0,
 ): void {
   const { cell } = vp;
-  const isCrate = block.kind === 'crate';
-  const base = isCrate ? options.theme.crate : blockColour(block.color);
+  if (block.kind === 'crate') {
+    drawPots(ctx, block, vp, dx, dy);
+    return;
+  }
+  const raw = block.raw === true;
+  const tileColour = blockColour(block.color);
+  // Raw clay is dull and unglazed; only a band at its edge carries the colour.
+  const base = raw ? RAW_CLAY : tileColour;
   const inset = Math.max(2, Math.round(cell * 0.06));
   const depth = Math.max(3, Math.round(cell * DEPTH_RATIO));
   const bounds = blockBounds(block, vp, dx, dy);
@@ -747,7 +797,7 @@ function drawBlock(
 
   // The finish layer. Crates and the default gloss keep the original satin
   // sheen; the other glazes draw flat shapes only (no gradients).
-  const glaze: GlazeId = isCrate ? 'gloss' : (options.glaze ?? 'gloss');
+  const glaze: GlazeId = raw ? 'matte' : (options.glaze ?? 'gloss');
   if (glaze === 'gloss') {
     ctx.save();
     face();
@@ -762,28 +812,21 @@ function drawBlock(
     drawGlazeLayer(ctx, glaze, block, vp, bounds, base, dx, dy, face, inset);
   }
 
-  // Crates are embossed obstacle pieces: raised ribs, each with a lit edge
-  // and a shaded one, so they read as moulded rather than painted.
-  if (isCrate) {
+  // Raw clay: a band of the real tile colour round the edge says which gate
+  // the piece belongs to, while the face stays unglazed.
+  if (raw) {
+    const band = Math.max(3, cell * 0.075);
     ctx.save();
     face();
     ctx.clip();
-    const step = Math.max(8, cell * 0.28);
-    const rib = Math.max(2.5, cell * 0.09);
-    for (let i = -bounds.h; i < bounds.w + bounds.h; i += step) {
-      ctx.lineWidth = rib;
-      ctx.strokeStyle = withAlpha(tint(base, 0.4), 0.55);
-      ctx.beginPath();
-      ctx.moveTo(bounds.x + i, bounds.y);
-      ctx.lineTo(bounds.x + i + bounds.h, bounds.y + bounds.h);
-      ctx.stroke();
-      ctx.lineWidth = rib * 0.7;
-      ctx.strokeStyle = withAlpha(shade(base, 0.45), 0.6);
-      ctx.beginPath();
-      ctx.moveTo(bounds.x + i + rib * 0.8, bounds.y);
-      ctx.lineTo(bounds.x + i + rib * 0.8 + bounds.h, bounds.y + bounds.h);
-      ctx.stroke();
-    }
+    ctx.strokeStyle = tileColour;
+    ctx.lineWidth = band * 2;
+    face();
+    ctx.stroke();
+    ctx.strokeStyle = withAlpha(shade(tileColour, 0.5), 0.8);
+    ctx.lineWidth = 1.2;
+    blockPath(ctx, block, vp, dx + band, dy + band, inset + band);
+    ctx.stroke();
     ctx.restore();
   }
 
@@ -838,8 +881,451 @@ function drawBlock(
     ctx.stroke();
   }
 
-  if (options.glyphs && !isCrate) {
-    drawGlyph(ctx, blockGlyph(block.color), bounds.cx, bounds.cy, cell * 0.34, withAlpha(shade(base, 0.5), 0.75));
+  if (glow > 0) {
+    // Fresh from the kiln: a warm wash that fades into the glazed look.
+    ctx.save();
+    face();
+    ctx.clip();
+    ctx.fillStyle = `rgba(255,170,70,${0.55 * glow})`;
+    ctx.fillRect(bounds.x - 2, bounds.y - 2, bounds.w + 4, bounds.h + 4);
+    ctx.restore();
+    ctx.save();
+    blockPath(ctx, block, vp, dx, dy, inset - cell * 0.03);
+    ctx.strokeStyle = `rgba(255,140,40,${0.6 * glow})`;
+    ctx.lineWidth = Math.max(3, cell * 0.12 * (2 - glow));
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  if (options.glyphs) {
+    if (raw) {
+      drawGlyph(ctx, blockGlyph(block.color), bounds.cx, bounds.cy, cell * 0.34, shade(RAW_CLAY, 0.45), tileColour);
+    } else {
+      drawGlyph(ctx, blockGlyph(block.color), bounds.cx, bounds.cy, cell * 0.34, withAlpha(shade(base, 0.5), 0.75));
+    }
+  }
+}
+
+/* -------------------------------------------------------------- obstacles */
+
+/** Unglazed, unfired clay: dull and grey-brown, nothing like a tile colour. */
+const RAW_CLAY = '#8b7a69';
+/** Biscuit-fired pots: pale, matte and warm. */
+const POT_CLAY = '#d9c4a0';
+const BRICK = '#7b4a3c';
+
+/** One pot: a flared body, a lit rim ring and a dark mouth, drawn from solid shapes. */
+function drawPot(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  baseY: number,
+  w: number,
+  h: number,
+  cell: number,
+): void {
+  const rimH = h * 0.2;
+  const topW = w;
+  const botW = w * 0.68;
+  const bodyTop = baseY - h + rimH * 0.5;
+  const ink = withAlpha(shade(POT_CLAY, 0.6), 0.95);
+
+  // Flared body.
+  ctx.beginPath();
+  ctx.moveTo(cx - topW * 0.46, bodyTop);
+  ctx.lineTo(cx + topW * 0.46, bodyTop);
+  ctx.lineTo(cx + botW / 2, baseY - h * 0.08);
+  ctx.quadraticCurveTo(cx + botW / 2, baseY, cx + botW * 0.36, baseY);
+  ctx.lineTo(cx - botW * 0.36, baseY);
+  ctx.quadraticCurveTo(cx - botW / 2, baseY, cx - botW / 2, baseY - h * 0.08);
+  ctx.closePath();
+  ctx.fillStyle = POT_CLAY;
+  ctx.fill();
+
+  // The shaded side: a flat facet down the right, not a gradient.
+  ctx.save();
+  ctx.clip();
+  ctx.fillStyle = shade(POT_CLAY, 0.22);
+  ctx.fillRect(cx + topW * 0.16, bodyTop, topW, h);
+  ctx.restore();
+  ctx.strokeStyle = ink;
+  ctx.lineWidth = Math.max(1.1, cell * 0.022);
+  ctx.stroke();
+
+  // Rim ring and the dark mouth inside it.
+  ctx.beginPath();
+  ctx.ellipse(cx, bodyTop, topW * 0.5, rimH * 0.8, 0, 0, Math.PI * 2);
+  ctx.fillStyle = tint(POT_CLAY, 0.28);
+  ctx.fill();
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.ellipse(cx, bodyTop + rimH * 0.1, topW * 0.36, rimH * 0.5, 0, 0, Math.PI * 2);
+  ctx.fillStyle = shade(POT_CLAY, 0.62);
+  ctx.fill();
+}
+
+/**
+ * Crates are stacks of unfired pots: one cell, never moves. Two or three pots
+ * per cell, varied by block id so a pair of crates is not a stamp.
+ */
+function drawPots(ctx: CanvasRenderingContext2D, block: Block, vp: Viewport, dx: number, dy: number): void {
+  const { cell, originX, originY } = vp;
+  const cells = blockCells(block);
+  for (let i = 0; i < cells.length; i++) {
+    const x0 = originX + cells[i].x * cell + dx;
+    const y0 = originY + cells[i].y * cell + dy;
+    const three = (block.id + i) % 2 === 1;
+    const cx = x0 + cell / 2;
+    const floor = y0 + cell * 0.9;
+
+    // Contact shadow on the tray floor.
+    ctx.save();
+    ctx.globalAlpha = 0.34;
+    ctx.fillStyle = '#000000';
+    box(ctx, x0 + cell * 0.14, floor - cell * 0.07, cell * 0.74, cell * 0.14, cell * 0.07);
+    ctx.fill();
+    ctx.restore();
+
+    if (three) {
+      drawPot(ctx, cx - cell * 0.2, floor, cell * 0.44, cell * 0.4, cell);
+      drawPot(ctx, cx + cell * 0.2, floor, cell * 0.44, cell * 0.4, cell);
+      drawPot(ctx, cx, floor - cell * 0.27, cell * 0.4, cell * 0.38, cell);
+    } else {
+      drawPot(ctx, cx, floor, cell * 0.62, cell * 0.48, cell);
+      drawPot(ctx, cx, floor - cell * 0.3, cell * 0.44, cell * 0.36, cell);
+    }
+  }
+}
+
+/** A kiln tile: a firebox set into the tray floor with a bed of coals. */
+function drawKilnCell(ctx: CanvasRenderingContext2D, x0: number, y0: number, cell: number): void {
+  const m = cell * 0.09;
+  const x = x0 + m;
+  const y = y0 + m;
+  const w = cell - m * 2;
+  const lip = Math.max(3, cell * 0.09);
+  const r = cell * 0.12;
+
+  // Heat spilling onto the floor round the lip.
+  ctx.save();
+  ctx.shadowColor = 'rgba(255,110,30,0.55)';
+  ctx.shadowBlur = cell * 0.22;
+  ctx.fillStyle = BRICK;
+  box(ctx, x, y, w, w, r);
+  ctx.fill();
+  ctx.restore();
+
+  // Brick lip, lit along its top edge, with mortar ticks.
+  ctx.fillStyle = shade(BRICK, 0.35);
+  box(ctx, x, y + 1.5, w, w, r);
+  ctx.fill();
+  ctx.fillStyle = BRICK;
+  box(ctx, x, y, w, w, r);
+  ctx.fill();
+  ctx.fillStyle = withAlpha(tint(BRICK, 0.4), 0.7);
+  box(ctx, x + r * 0.5, y + 1, w - r, Math.max(1.2, cell * 0.02), 0.6);
+  ctx.fill();
+  ctx.strokeStyle = withAlpha(shade(BRICK, 0.5), 0.8);
+  ctx.lineWidth = Math.max(1, cell * 0.016);
+  ctx.beginPath();
+  const t = lip * 0.5;
+  for (let i = 1; i < 4; i++) {
+    const f = i / 4;
+    ctx.moveTo(x + w * f, y + 1);
+    ctx.lineTo(x + w * f, y + t);
+    ctx.moveTo(x + w * f, y + w - t);
+    ctx.lineTo(x + w * f, y + w - 1);
+    ctx.moveTo(x + 1, y + w * f);
+    ctx.lineTo(x + t, y + w * f);
+    ctx.moveTo(x + w - t, y + w * f);
+    ctx.lineTo(x + w - 1, y + w * f);
+  }
+  ctx.stroke();
+
+  // The recess: dark, with the lip casting down into it.
+  const ix = x + lip;
+  const iy = y + lip;
+  const iw = w - lip * 2;
+  const ir = r * 0.6;
+  ctx.fillStyle = '#1b0f0b';
+  box(ctx, ix, iy, iw, iw, ir);
+  ctx.fill();
+
+  // Ember bed: deep red base, orange coals, a few hot centres.
+  ctx.save();
+  box(ctx, ix, iy, iw, iw, ir);
+  ctx.clip();
+  ctx.fillStyle = '#8a1c10';
+  box(ctx, ix + 1, iy + 1, iw - 2, iw - 2, ir);
+  ctx.fill();
+  const coals: Array<[number, number, number, string]> = [
+    [0.28, 0.3, 0.2, '#d4481a'],
+    [0.7, 0.26, 0.17, '#e0601c'],
+    [0.5, 0.52, 0.22, '#e8751f'],
+    [0.24, 0.72, 0.17, '#d9531a'],
+    [0.74, 0.7, 0.2, '#e56a1d'],
+    [0.5, 0.52, 0.11, '#ffa835'],
+    [0.28, 0.3, 0.07, '#f59a2c'],
+    [0.74, 0.7, 0.08, '#ffb040'],
+  ];
+  for (const [fx, fy, fr, colour] of coals) {
+    ctx.fillStyle = colour;
+    ctx.beginPath();
+    ctx.arc(ix + fx * iw, iy + fy * iw, fr * iw, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+  innerShadow(
+    ctx,
+    () => roundRectPath(ctx, ix, iy, iw, iw, { tl: ir, tr: ir, br: ir, bl: ir }),
+    lip * 0.9,
+    lip * 0.35,
+    'rgba(0,0,0,0.75)',
+  );
+}
+
+/** Wet clay: a darker, glossy patch of slip on the floor. */
+function drawWetCell(ctx: CanvasRenderingContext2D, x0: number, y0: number, cell: number, variant: number): void {
+  const mirror = variant % 2 === 1;
+  const px = (f: number): number => x0 + (mirror ? 1 - f : f) * cell;
+  const py = (f: number): number => y0 + f * cell;
+  const tracePuddle = (grow: number): void => {
+    ctx.beginPath();
+    ctx.moveTo(px(0.2 - grow), py(0.46));
+    ctx.bezierCurveTo(px(0.16 - grow), py(0.2 - grow), px(0.42), py(0.1 - grow), px(0.6), py(0.17 - grow));
+    ctx.bezierCurveTo(px(0.84 + grow), py(0.2 - grow), px(0.92 + grow), py(0.46), px(0.84 + grow), py(0.68));
+    ctx.bezierCurveTo(px(0.78 + grow), py(0.88 + grow), px(0.5), py(0.92 + grow), px(0.3), py(0.84 + grow));
+    ctx.bezierCurveTo(px(0.1 - grow), py(0.76), px(0.22 - grow), py(0.6), px(0.2 - grow), py(0.46));
+    ctx.closePath();
+  };
+
+  // A raised lip of slip round the edge, then the dark wet surface.
+  ctx.fillStyle = 'rgba(255,255,255,0.14)';
+  tracePuddle(0.025);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(78,54,38,0.62)';
+  tracePuddle(0);
+  ctx.fill();
+
+  // Wet sheen: a bright line and a small dot, as light on a slick surface.
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+  ctx.lineWidth = Math.max(2, cell * 0.05);
+  ctx.beginPath();
+  ctx.moveTo(px(0.3), py(0.4));
+  ctx.quadraticCurveTo(px(0.36), py(0.28), px(0.52), py(0.26));
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.beginPath();
+  ctx.arc(px(0.62), py(0.3), Math.max(1.4, cell * 0.03), 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawFloorObstacles(ctx: CanvasRenderingContext2D, level: Level, vp: Viewport): void {
+  const { cell, originX, originY } = vp;
+  for (const c of level.wet ?? []) {
+    drawWetCell(ctx, originX + c.x * cell, originY + c.y * cell, cell, c.x * 3 + c.y);
+  }
+  for (const c of level.kilns ?? []) {
+    drawKilnCell(ctx, originX + c.x * cell, originY + c.y * cell, cell);
+  }
+}
+
+/**
+ * An iron kiln door laid over a gate, with a badge in the colour of the block
+ * that unlocks it. `open` runs 0 (shut) to 1 (gone): the plate slides back
+ * toward the start of the lip.
+ */
+function drawDoorPlate(
+  ctx: CanvasRenderingContext2D,
+  g: Pick<GateGeometry, 'horizontal' | 'bx' | 'by' | 'bw' | 'bh'>,
+  gate: Gate,
+  open: number,
+  glyphs: boolean,
+): void {
+  const { horizontal, bx, by, bw, bh } = g;
+  const thickness = Math.min(bw, bh);
+  const length = Math.max(bw, bh);
+  const m = Math.max(1, thickness * 0.08);
+  const full = length - m * 2;
+  const ease = open * open * (3 - 2 * open);
+  const len = Math.max(0, full * (1 - ease));
+  if (len < 2) return;
+
+  const px = bx + m;
+  const py = by + m;
+  const pw = horizontal ? len : bw - m * 2;
+  const ph = horizontal ? bh - m * 2 : len;
+  const IRON = '#454b56';
+  const r = Math.max(1.5, thickness * 0.14);
+  const lift = Math.max(1.2, thickness * 0.1);
+
+  ctx.fillStyle = shade(IRON, 0.55);
+  box(ctx, px, py + lift, pw, ph, r);
+  ctx.fill();
+  ctx.fillStyle = IRON;
+  box(ctx, px, py, pw, ph, r);
+  ctx.fill();
+  ctx.fillStyle = withAlpha(tint(IRON, 0.45), 0.8);
+  box(ctx, px + r * 0.5, py + 0.8, Math.max(0, pw - r), Math.max(1, thickness * 0.07), 0.6);
+  ctx.fill();
+
+  // Rivets at both ends of the plate.
+  const rr = Math.max(1, thickness * 0.07);
+  if (len > thickness * 1.2) {
+    const rivets: Array<[number, number]> = horizontal
+      ? [[px + thickness * 0.2, py + ph / 2], [px + pw - thickness * 0.2, py + ph / 2]]
+      : [[px + pw / 2, py + thickness * 0.2], [px + pw / 2, py + ph - thickness * 0.2]];
+    ctx.fillStyle = tint(IRON, 0.35);
+    for (const [rx, ry] of rivets) {
+      ctx.beginPath();
+      ctx.arc(rx, ry, rr, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // The key badge, with the gate's own shape beside it when shapes are on.
+  if (open > 0.6) return;
+  const spread = glyphs ? Math.min(length * 0.2, thickness * 0.95) : 0;
+  const bcx = px + pw / 2 + (horizontal ? spread : 0);
+  const bcy = py + ph / 2 + (horizontal ? 0 : spread);
+  const rad = Math.max(3.5, thickness * 0.34);
+  const keyColour = blockColour(gate.key ?? 0);
+  ctx.fillStyle = shade(keyColour, 0.5);
+  ctx.beginPath();
+  ctx.arc(bcx, bcy + 1, rad, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = keyColour;
+  ctx.beginPath();
+  ctx.arc(bcx, bcy, rad, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = tint(IRON, 0.5);
+  ctx.lineWidth = Math.max(1, rad * 0.22);
+  ctx.stroke();
+  if (glyphs && rad >= 5) {
+    drawGlyph(ctx, blockGlyph(gate.key ?? 0), bcx, bcy, rad * 1.25, shade(keyColour, 0.62));
+  }
+  if (glyphs) {
+    const gcx = px + pw / 2 - (horizontal ? spread : 0);
+    const gcy = py + ph / 2 - (horizontal ? 0 : spread);
+    const gc = blockColour(gate.color);
+    drawGlyph(ctx, blockGlyph(gate.color), gcx, gcy, thickness * 0.6, tint(gc, 0.2), shade(gc, 0.55));
+  }
+}
+
+const RAW_FIRE_MS = 300;
+const DOOR_OPEN_MS = 250;
+
+/** What the last frame saw, so a change can start a short animation. */
+interface ObstacleWatch {
+  level: Level | null;
+  wasRaw: Map<number, boolean>;
+  firedAt: Map<number, number>;
+  doorOpen: boolean[];
+  doorAt: number[];
+}
+
+const watch: ObstacleWatch = { level: null, wasRaw: new Map(), firedAt: new Map(), doorOpen: [], doorAt: [] };
+
+/** Notes this frame's raw and door states, starting a glow or a door swing on a change. */
+function updateWatch(level: Level, reduceMotion: boolean, now: number): void {
+  if (watch.level !== level) {
+    watch.level = level;
+    watch.wasRaw.clear();
+    watch.firedAt.clear();
+    watch.doorOpen = level.gates.map((g) => g.key !== undefined && gateIsOpen(level, g));
+    watch.doorAt = level.gates.map(() => -1);
+    for (const b of level.blocks) watch.wasRaw.set(b.id, b.raw === true);
+    return;
+  }
+  for (const b of level.blocks) {
+    const isRaw = b.raw === true;
+    if (watch.wasRaw.get(b.id) === true && !isRaw && !reduceMotion) watch.firedAt.set(b.id, now);
+    if (isRaw) watch.firedAt.delete(b.id);
+    watch.wasRaw.set(b.id, isRaw);
+  }
+  level.gates.forEach((g, i) => {
+    if (g.key === undefined) return;
+    const open = gateIsOpen(level, g);
+    if (open && !watch.doorOpen[i]) watch.doorAt[i] = reduceMotion ? -1 : now;
+    if (!open) watch.doorAt[i] = -1;
+    watch.doorOpen[i] = open;
+  });
+}
+
+/** Draws the doors over their gates; returns true while one is still swinging. */
+function drawDoors(
+  ctx: CanvasRenderingContext2D,
+  level: Level,
+  vp: Viewport,
+  options: RenderOptions,
+  now: number,
+): boolean {
+  let busy = false;
+  level.gates.forEach((gate, i) => {
+    if (gate.key === undefined) return;
+    let open = 0;
+    if (watch.doorOpen[i]) {
+      const t = watch.doorAt[i] < 0 ? 1 : (now - watch.doorAt[i]) / DOOR_OPEN_MS;
+      if (t < 1) busy = true;
+      open = Math.max(0, Math.min(1, t));
+    }
+    if (open >= 1) return;
+    drawDoorPlate(ctx, gateGeometry(level, vp, gate), gate, open, options.glyphs);
+  });
+  return busy;
+}
+
+export type ObstacleIcon = 'pots' | 'raw' | 'wet' | 'door';
+
+/**
+ * Paints a small picture of an obstacle into a canvas, with the same draw
+ * functions the board uses, for the first-sighting tip cards.
+ */
+export function drawObstacleIcon(canvas: HTMLCanvasElement, kind: ObstacleIcon, theme: Theme, glyphs: boolean): void {
+  const dpr = canvasScale();
+  const cell = 52;
+  const cols = kind === 'raw' ? 2 : 1;
+  canvas.width = Math.round(cell * cols * dpr);
+  canvas.height = Math.round(cell * dpr);
+  canvas.style.width = `${cell * cols}px`;
+  canvas.style.height = `${cell}px`;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = theme.floor;
+  box(ctx, 0, 0, cell * cols, cell, cell * 0.14);
+  ctx.fill();
+
+  const vp: Viewport = { cell, wall: 0, originX: 0, originY: 0 };
+  const options: RenderOptions = { theme, glyphs, time: 0, reduceMotion: true };
+  const piece = (extra: Partial<Block>): Block => ({
+    id: 1,
+    color: 0,
+    kind: 'block',
+    shape: [{ x: 0, y: 0 }],
+    pos: { x: 0, y: 0 },
+    exited: false,
+    ...extra,
+  });
+
+  if (kind === 'pots') {
+    drawPots(ctx, piece({ kind: 'crate', color: -1 }), vp, 0, 0);
+  } else if (kind === 'wet') {
+    drawWetCell(ctx, 0, 0, cell, 0);
+  } else if (kind === 'raw') {
+    drawKilnCell(ctx, cell, 0, cell);
+    drawBlock(ctx, piece({ raw: true, color: 1 }), vp, options, 0, 0);
+  } else {
+    ctx.fillStyle = theme.tray;
+    ctx.fillRect(0, 0, cell, cell);
+    const g = { horizontal: true, bx: 3, by: cell * 0.34, bw: cell - 6, bh: cell * 0.32 };
+    ctx.fillStyle = theme.channel;
+    box(ctx, 0, cell * 0.3, cell, cell * 0.4, 4);
+    ctx.fill();
+    ctx.fillStyle = blockColour(2);
+    box(ctx, g.bx, g.by, g.bw, g.bh, 3);
+    ctx.fill();
+    drawDoorPlate(ctx, g, { side: 'top', start: 0, length: 1, color: 2, key: 0 }, 0, glyphs);
   }
 }
 
@@ -874,7 +1360,7 @@ function staticLayerFor(
   dpr: number,
 ): CanvasImageSource {
   const { width, height } = ctx.canvas;
-  const key = [width, height, dpr, vp.cell, vp.wall, vp.originX, vp.originY, options.theme.id, options.glyphs].join('|');
+  const key = [width, height, dpr, vp.cell, vp.wall, vp.originX, vp.originY, options.theme.id, options.glyphs, options.rim ?? ''].join('|');
   if (staticLayer && staticLayer.level === level && staticLayer.key === key) {
     return staticLayer.bitmap ?? staticLayer.canvas;
   }
@@ -886,7 +1372,9 @@ function staticLayerFor(
   if (!layer) throw new Error('canvas 2d context unavailable');
   layer.setTransform(dpr, 0, 0, dpr, 0, 0);
   drawTray(layer, level, vp, options.theme);
+  drawRimStatic(layer, level, vp, options.theme, options.rim ?? '');
   drawFloor(layer, level, vp, options.theme);
+  drawFloorObstacles(layer, level, vp);
   drawGates(layer, level, vp, options);
 
   invalidateStaticLayer();
@@ -908,17 +1396,25 @@ function staticLayerFor(
 
 /* ------------------------------------------------------------------ frame */
 
+/**
+ * Paints one frame. Returns true while a short animation (a fired block's
+ * glow, a kiln door opening) still needs more frames.
+ */
 export function render(
   ctx: CanvasRenderingContext2D,
   level: Level,
   vp: Viewport,
   options: RenderOptions,
-): void {
+): boolean {
+  const now = performance.now();
+  updateWatch(level, options.reduceMotion, now);
+  let busy = false;
   const dpr = canvasScale();
   const cssWidth = ctx.canvas.width / dpr;
   const cssHeight = ctx.canvas.height / dpr;
   ctx.clearRect(0, 0, cssWidth, cssHeight);
   ctx.drawImage(staticLayerFor(ctx, level, vp, options, dpr), 0, 0, cssWidth, cssHeight);
+  drawRimLive(ctx, level, vp, options.rim ?? '', options.time, options.reduceMotion);
 
   // Tiles nearer the bottom draw later, so their thickness overlaps correctly.
   const ordered = level.blocks
@@ -926,18 +1422,34 @@ export function render(
     .sort((a, b) => a.pos.y - b.pos.y || a.pos.x - b.pos.x);
 
   const dragged = options.drag?.blockId;
+  const glowOf = (block: Block): number => {
+    const at = watch.firedAt.get(block.id);
+    if (at === undefined) return 0;
+    const t = (now - at) / RAW_FIRE_MS;
+    if (t >= 1) {
+      watch.firedAt.delete(block.id);
+      return 0;
+    }
+    busy = true;
+    return 1 - t;
+  };
+
+  if (drawDoors(ctx, level, vp, options, now)) busy = true;
+
   for (const block of ordered) {
     if (block.id === dragged) continue;
-    drawBlock(ctx, block, vp, options, 0, 0);
+    drawBlock(ctx, block, vp, options, 0, 0, glowOf(block));
   }
   if (dragged !== undefined) {
     const block = level.blocks.find((b) => b.id === dragged);
     if (block && !block.exited) {
-      drawBlock(ctx, block, vp, options, options.drag!.offsetX, options.drag!.offsetY);
+      drawBlock(ctx, block, vp, options, options.drag!.offsetX, options.drag!.offsetY, glowOf(block));
     }
   }
 
   options.particles?.draw(ctx);
+  if (options.winFx) drawWinEffect(ctx, level, vp, options.winFx);
+  return busy;
 }
 
 /** Screen position of a block's centre, for spawning effects. */

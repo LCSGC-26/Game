@@ -31,6 +31,10 @@ const CRATE_MARK = 255;
 
 const SIDE_INDEX: Record<Side, number> = { top: 0, bottom: 1, left: 2, right: 3 };
 
+/** Slots per block in a search state: x, y, flags. */
+const SLOTS = 3;
+const RAW_FLAG = 1;
+
 /** Static, position-independent facts about a level, precomputed once. */
 class SearchModel {
   readonly width: number;
@@ -42,7 +46,13 @@ class SearchModel {
   readonly yOffsets: Int8Array[];
   readonly colors: Int8Array;
   readonly baseGrid: Uint8Array;
+  readonly wet: Uint8Array;
+  readonly kilns: Uint8Array;
+  readonly hasKilns: boolean;
+  readonly hasWet: boolean;
   private readonly gateLanes: Uint8Array;
+  /** Per gate lane: key colour + 1 for a kiln door, 0 for an ordinary gate. */
+  private readonly gateKeys: Int8Array;
   private readonly laneStride: number;
 
   constructor(level: Level) {
@@ -72,34 +82,56 @@ class SearchModel {
       }
     }
 
+    this.wet = new Uint8Array(level.width * level.height);
+    for (const c of level.wet ?? []) this.wet[c.y * level.width + c.x] = 1;
+    this.kilns = new Uint8Array(level.width * level.height);
+    for (const c of level.kilns ?? []) this.kilns[c.y * level.width + c.x] = 1;
+    this.hasWet = (level.wet?.length ?? 0) > 0;
+    this.hasKilns = (level.kilns?.length ?? 0) > 0;
+
     const colorCount = Math.max(1, ...level.gates.map((g) => g.color + 1));
     this.laneStride = Math.max(level.width, level.height);
     this.gateLanes = new Uint8Array(colorCount * 4 * this.laneStride);
+    this.gateKeys = new Int8Array(colorCount * 4 * this.laneStride);
     for (const g of level.gates) {
       for (let lane = g.start; lane < g.start + g.length; lane++) {
         const idx = (g.color * 4 + SIDE_INDEX[g.side]) * this.laneStride + lane;
-        if (idx >= 0 && idx < this.gateLanes.length) this.gateLanes[idx] = 1;
+        if (idx >= 0 && idx < this.gateLanes.length) {
+          this.gateLanes[idx] = 1;
+          this.gateKeys[idx] = g.key === undefined ? 0 : g.key + 1;
+        }
       }
     }
   }
 
-  gateOpen(color: number, side: Side, lane: number): boolean {
-    if (lane < 0 || lane >= this.laneStride) return false;
-    const idx = (color * 4 + SIDE_INDEX[side]) * this.laneStride + lane;
-    return idx >= 0 && idx < this.gateLanes.length && this.gateLanes[idx] === 1;
+  /** Whether a block of `color` has left the board in this state. */
+  private colourGone(state: Int8Array, color: number): boolean {
+    for (let i = 0; i < this.count; i++) {
+      if (this.colors[i] === color && state[i * SLOTS] === EXITED) return true;
+    }
+    return false;
   }
 
-  /** State layout: two Int8 slots per block; x === EXITED means gone. */
+  gateOpen(state: Int8Array, color: number, side: Side, lane: number): boolean {
+    if (lane < 0 || lane >= this.laneStride) return false;
+    const idx = (color * 4 + SIDE_INDEX[side]) * this.laneStride + lane;
+    if (idx < 0 || idx >= this.gateLanes.length || this.gateLanes[idx] !== 1) return false;
+    const key = this.gateKeys[idx];
+    return key === 0 || this.colourGone(state, key - 1);
+  }
+
+  /** State layout: SLOTS Int8 slots per block; x === EXITED means gone. */
   initialState(level: Level): Int8Array {
-    const state = new Int8Array(this.count * 2);
+    const state = new Int8Array(this.count * SLOTS);
     const playable = level.blocks.filter((b) => b.kind === 'block');
     playable.forEach((b, i) => {
       if (b.exited) {
-        state[i * 2] = EXITED;
-        state[i * 2 + 1] = 0;
+        state[i * SLOTS] = EXITED;
+        state[i * SLOTS + 1] = 0;
       } else {
-        state[i * 2] = b.pos.x;
-        state[i * 2 + 1] = b.pos.y;
+        state[i * SLOTS] = b.pos.x;
+        state[i * SLOTS + 1] = b.pos.y;
+        state[i * SLOTS + 2] = b.raw ? RAW_FLAG : 0;
       }
     });
     return state;
@@ -108,9 +140,9 @@ class SearchModel {
   fillGrid(state: Int8Array, grid: Uint8Array): void {
     grid.set(this.baseGrid);
     for (let i = 0; i < this.count; i++) {
-      const px = state[i * 2];
+      const px = state[i * SLOTS];
       if (px === EXITED) continue;
-      const py = state[i * 2 + 1];
+      const py = state[i * SLOTS + 1];
       const shape = this.shapes[i];
       for (let s = 0; s < shape.length; s += 2) {
         grid[(py + shape[s + 1]) * this.width + px + shape[s]] = i + 1;
@@ -122,21 +154,22 @@ class SearchModel {
   fitsGate(state: Int8Array, index: number, side: Side): boolean {
     const color = this.colors[index];
     if (color === CRATE_COLOR) return false;
-    const px = state[index * 2];
-    const py = state[index * 2 + 1];
+    if (state[index * SLOTS + 2] & RAW_FLAG) return false;
+    const px = state[index * SLOTS];
+    const py = state[index * SLOTS + 1];
     const offsets = side === 'top' || side === 'bottom' ? this.xOffsets[index] : this.yOffsets[index];
     const base = side === 'top' || side === 'bottom' ? px : py;
     for (let i = 0; i < offsets.length; i++) {
-      if (!this.gateOpen(color, side, base + offsets[i])) return false;
+      if (!this.gateOpen(state, color, side, base + offsets[i])) return false;
     }
     return true;
   }
 
   /** How far block `index` can slide, and whether that slide exits the board. */
   slide(state: Int8Array, grid: Uint8Array, index: number, dir: Dir): { distance: number; exits: boolean } {
-    const px = state[index * 2];
+    const px = state[index * SLOTS];
     if (px === EXITED) return { distance: 0, exits: false };
-    const py = state[index * 2 + 1];
+    const py = state[index * SLOTS + 1];
     const shape = this.shapes[index];
     const vec = DIR_VECTORS[dir];
     const side = sideForDir(dir);
@@ -159,13 +192,47 @@ class SearchModel {
         if (this.fitsGate(state, index, side)) return { distance: step, exits: true };
         return { distance: step - 1, exits: false };
       }
+      if (this.hasWet && this.entersWet(px, py, shape, vec, step)) return { distance: step, exits: false };
     }
     return { distance: limit, exits: false };
   }
 
+  /** True when a cell of the block lands on wet clay it was not already on. */
+  private entersWet(px: number, py: number, shape: Int8Array, vec: { x: number; y: number }, step: number): boolean {
+    for (let s = 0; s < shape.length; s += 2) {
+      const nx = px + shape[s] + vec.x * step;
+      const ny = py + shape[s + 1] + vec.y * step;
+      if (!this.wet[ny * this.width + nx]) continue;
+      let wasHere = false;
+      for (let o = 0; o < shape.length; o += 2) {
+        if (px + shape[o] + vec.x * (step - 1) === nx && py + shape[o + 1] + vec.y * (step - 1) === ny) {
+          wasHere = true;
+          break;
+        }
+      }
+      if (!wasHere) return true;
+    }
+    return false;
+  }
+
+  /** Whether a raw block passes over or stops on a kiln tile during a slide. */
+  firesOn(state: Int8Array, index: number, dir: Dir, distance: number): boolean {
+    if (!this.hasKilns || !(state[index * SLOTS + 2] & RAW_FLAG)) return false;
+    const px = state[index * SLOTS];
+    const py = state[index * SLOTS + 1];
+    const shape = this.shapes[index];
+    const vec = DIR_VECTORS[dir];
+    for (let step = 1; step <= distance; step++) {
+      for (let s = 0; s < shape.length; s += 2) {
+        if (this.kilns[(py + shape[s + 1] + vec.y * step) * this.width + px + shape[s] + vec.x * step]) return true;
+      }
+    }
+    return false;
+  }
+
   solved(state: Int8Array): boolean {
     for (let i = 0; i < this.count; i++) {
-      if (state[i * 2] !== EXITED) return false;
+      if (state[i * SLOTS] !== EXITED) return false;
     }
     return true;
   }
@@ -230,7 +297,7 @@ export function solve(level: Level, options: SolveOptions = {}): SolveResult {
     // Forced-exit pruning: one available exit replaces the whole move list.
     let forced: { index: number; dir: Dir; distance: number } | null = null;
     outer: for (let i = 0; i < model.count && !forced; i++) {
-      if (state[i * 2] === EXITED) continue;
+      if (state[i * SLOTS] === EXITED) continue;
       for (const dir of ALL_DIRS) {
         const reach = model.slide(state, grid, i, dir);
         if (reach.exits) {
@@ -243,12 +310,14 @@ export function solve(level: Level, options: SolveOptions = {}): SolveResult {
     const expand = (index: number, dir: Dir, distance: number, exits: boolean): number | null => {
       const next = Int8Array.from(state);
       if (exits) {
-        next[index * 2] = EXITED;
-        next[index * 2 + 1] = 0;
+        next[index * SLOTS] = EXITED;
+        next[index * SLOTS + 1] = 0;
+        next[index * SLOTS + 2] = 0;
       } else {
         const vec = DIR_VECTORS[dir];
-        next[index * 2] = state[index * 2] + vec.x * distance;
-        next[index * 2 + 1] = state[index * 2 + 1] + vec.y * distance;
+        if (model.firesOn(state, index, dir, distance)) next[index * SLOTS + 2] &= ~RAW_FLAG;
+        next[index * SLOTS] = state[index * SLOTS] + vec.x * distance;
+        next[index * SLOTS + 1] = state[index * SLOTS + 1] + vec.y * distance;
       }
       const key = keyOf(next);
       if (visited.has(key)) return null;
@@ -276,7 +345,7 @@ export function solve(level: Level, options: SolveOptions = {}): SolveResult {
     }
 
     for (let i = 0; i < model.count; i++) {
-      if (state[i * 2] === EXITED) continue;
+      if (state[i * SLOTS] === EXITED) continue;
       for (const dir of ALL_DIRS) {
         const reach = model.slide(state, grid, i, dir);
         for (let d = 1; d <= reach.distance; d++) {

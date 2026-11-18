@@ -161,6 +161,7 @@
           <button class="shop-tab" role="tab" data-tab="characters">Friends</button>
           <button class="shop-tab" role="tab" data-tab="glazes">Glazes</button>
           <button class="shop-tab" role="tab" data-tab="effects">Effects</button>
+          <button class="shop-tab" role="tab" data-tab="rims">Rims</button>
         </div>
         <div class="panel">
           <p class="lead" id="shop-lead"></p>
@@ -305,6 +306,15 @@
           <p id="confirm-body"></p>
           <button class="btn btn-danger" id="confirm-yes">Yes</button>
           <button class="btn" id="confirm-no">Cancel</button>
+        </div>
+      </div>
+
+      <!-- First-sighting tips for new obstacles -->
+      <div class="overlay" id="overlay-tip" hidden>
+        <div class="card tip-card">
+          <h2>New on the board</h2>
+          <div class="tip-list" id="tip-list"></div>
+          <button class="btn btn-primary" id="tip-ok">Got it</button>
         </div>
       </div>
 

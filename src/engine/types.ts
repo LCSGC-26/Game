@@ -33,6 +33,11 @@ export interface Block {
   pos: Cell;
   /** True once the block has left the board through a matching gate. */
   exited: boolean;
+  /**
+   * Raw (unfired) clay. A raw block cannot leave through any gate until it
+   * has slid over or onto a kiln tile, which fires it for good.
+   */
+  raw?: boolean;
 }
 
 /**
@@ -44,6 +49,11 @@ export interface Gate {
   start: number;
   length: number;
   color: number;
+  /**
+   * A kiln door: the gate stays shut until at least one block of this
+   * colour has left the board.
+   */
+  key?: number;
 }
 
 export interface Level {
@@ -53,6 +63,10 @@ export interface Level {
   height: number;
   blocks: Block[];
   gates: Gate[];
+  /** Kiln tiles: floor cells that fire raw clay sliding over or onto them. */
+  kilns?: Cell[];
+  /** Wet clay: floor cells that stop a sliding block as it enters them. */
+  wet?: Cell[];
   /** Length of the shortest solution, proven by the solver at build time. */
   minMoves: number;
   /**
@@ -79,6 +93,8 @@ export function cloneLevel(level: Level): Level {
     ...level,
     blocks: level.blocks.map(cloneBlock),
     gates: level.gates.map((g) => ({ ...g })),
+    kilns: level.kilns?.map((c) => ({ ...c })),
+    wet: level.wet?.map((c) => ({ ...c })),
     solution: level.solution?.map((m) => ({ ...m })),
   };
 }

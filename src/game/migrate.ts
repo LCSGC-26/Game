@@ -1,14 +1,13 @@
 /**
  * Save migration for rebuilt levels.
  *
- * 1.2.0 rebuilt levels 4 to 200 so they need more planning. A save's best
- * move counts for those levels were set on the old boards, so they cannot be
- * compared with the new pars. Each one is replaced with the fewest moves that
- * earn, on the new board, the same stars the player had on the old one: a
- * cleared level stays cleared, and no star, goal or gold pot is lost.
+ * When a pack version rebuilds levels (1.2.0 for planning depth, 1.3.0 for
+ * obstacles), a save's best move counts were set on the old boards and
+ * cannot be compared with the new pars. Each one is replaced with the fewest
+ * moves that earn, on the new board, the same stars the player had on the
+ * old one: a cleared level stays cleared, and no star, goal or gold pot is
+ * lost. Old pars live in pack-history.ts.
  */
-
-import { LEGACY_PARS } from './legacy-pars.ts';
 
 export function starsFor(moves: number, par: number): number {
   if (moves <= par) return 3;
@@ -24,17 +23,21 @@ export function movesForStars(stars: number, par: number): number {
 }
 
 /**
- * Rewrites best move counts set on version-1 boards. `newPar` gives the
- * current pack's par; a level whose par did not change is left alone.
+ * Rewrites best move counts set on boards whose pars were `oldPars` (by
+ * level number, from 1). `newPar` gives the current pack's par; a level
+ * whose par did not change is left alone, and with no old pars at all the
+ * records are returned unchanged.
  */
 export function migrateBestMoves(
   bestMoves: Record<number, number>,
+  oldPars: readonly number[] | undefined,
   newPar: (levelId: number) => number | null,
 ): Record<number, number> {
+  if (!oldPars) return { ...bestMoves };
   const out: Record<number, number> = {};
   for (const [key, moves] of Object.entries(bestMoves)) {
     const id = Number(key);
-    const oldPar = LEGACY_PARS[id - 1];
+    const oldPar = oldPars[id - 1];
     const par = newPar(id);
     if (oldPar === undefined || par === null || par === oldPar) {
       out[id] = moves;

@@ -13,7 +13,7 @@ import { solve } from '../engine/solver.ts';
 import { cloneLevel, type Cell, type Dir, type Level, type Move, blockCells } from '../engine/types.ts';
 
 interface Snapshot {
-  positions: Array<{ id: number; x: number; y: number; exited: boolean }>;
+  positions: Array<{ id: number; x: number; y: number; exited: boolean; raw: boolean }>;
   moves: number;
 }
 
@@ -42,6 +42,7 @@ export class Session {
         x: b.pos.x,
         y: b.pos.y,
         exited: b.exited,
+        raw: b.raw === true,
       })),
     };
   }
@@ -52,6 +53,7 @@ export class Session {
       if (!block) continue;
       block.pos = { x: saved.x, y: saved.y };
       block.exited = saved.exited;
+      block.raw = saved.raw || undefined;
     }
     this.moves = snapshot.moves;
   }

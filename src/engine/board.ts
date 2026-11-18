@@ -44,10 +44,20 @@ export function laneOf(cell: Cell, side: Side): number {
   return side === 'top' || side === 'bottom' ? cell.x : cell.y;
 }
 
+/** A kiln door is open once a block of its key colour has left the board. */
+export function gateIsOpen(level: Level, gate: { key?: number }): boolean {
+  return gate.key === undefined || level.blocks.some((b) => b.exited && b.color === gate.key);
+}
+
 export function gateCoversLane(level: Level, side: Side, lane: number, color: number): boolean {
   return level.gates.some(
-    (g) => g.side === side && g.color === color && lane >= g.start && lane < g.start + g.length,
+    (g) =>
+      g.side === side && g.color === color && lane >= g.start && lane < g.start + g.length && gateIsOpen(level, g),
   );
+}
+
+function cellSet(level: Level, cells: Cell[] | undefined): Set<number> {
+  return new Set((cells ?? []).map((c) => c.y * level.width + c.x));
 }
 
 /**
@@ -56,7 +66,7 @@ export function gateCoversLane(level: Level, side: Side, lane: number, color: nu
  * ever ending up wedged half-outside the board.
  */
 export function blockFitsGate(level: Level, block: Block, side: Side): boolean {
-  if (block.kind === 'crate') return false;
+  if (block.kind === 'crate' || block.raw) return false;
   const lanes = new Set(blockCells(block).map((c) => laneOf(c, side)));
   for (const lane of lanes) {
     if (!gateCoversLane(level, side, lane, block.color)) return false;
@@ -92,6 +102,7 @@ export function maxSlide(level: Level, block: Block, dir: Dir): SlideResult {
   const side = sideForDir(dir);
   const cells = blockCells(block);
   const limit = level.width + level.height;
+  const wet = cellSet(level, level.wet);
 
   for (let step = 1; step <= limit; step++) {
     let anyOutside = false;
@@ -117,6 +128,18 @@ export function maxSlide(level: Level, block: Block, dir: Dir): SlideResult {
       // for the whole block.
       if (blockFitsGate(level, block, side)) return { distance: step, exits: true };
       return { distance: step - 1, exits: false };
+    }
+
+    // Wet clay grabs a block: entering a wet cell ends the slide there.
+    if (wet.size > 0) {
+      for (const c of cells) {
+        const x = c.x + vec.x * step;
+        const y = c.y + vec.y * step;
+        const i = y * level.width + x;
+        if (!wet.has(i)) continue;
+        const wasHere = cells.some((o) => o.x + vec.x * (step - 1) === x && o.y + vec.y * (step - 1) === y);
+        if (!wasHere) return { distance: step, exits: false };
+      }
     }
   }
 
@@ -150,6 +173,20 @@ export function applyMove(level: Level, move: Move): AppliedMove {
   }
 
   const vec = DIR_VECTORS[move.dir];
+  if (block.raw && level.kilns?.length) {
+    // Raw clay fires on any kiln tile it passes over or stops on.
+    const kilns = cellSet(level, level.kilns);
+    for (let step = 1; step <= move.distance && block.raw; step++) {
+      for (const c of block.shape) {
+        const x = block.pos.x + c.x + vec.x * step;
+        const y = block.pos.y + c.y + vec.y * step;
+        if (kilns.has(y * level.width + x)) {
+          block.raw = false;
+          break;
+        }
+      }
+    }
+  }
   block.pos = { x: block.pos.x + vec.x * move.distance, y: block.pos.y + vec.y * move.distance };
   return { ok: true, exited: false };
 }
@@ -182,7 +219,7 @@ export function encodeState(level: Level): string {
   let key = '';
   for (const b of level.blocks) {
     if (b.kind === 'crate') continue;
-    key += b.exited ? 'x|' : `${b.pos.x},${b.pos.y}|`;
+    key += b.exited ? 'x|' : `${b.pos.x},${b.pos.y}${b.raw ? 'r' : ''}|`;
   }
   return key;
 }
