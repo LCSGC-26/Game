@@ -102,6 +102,17 @@ November 2026; re-check when a feature changes.*
 
 ## Release notes (500 characters max)
 
+1.3.0:
+
+```
+New kiln obstacles, from testers' ideas: stacked pots, raw clay that has
+to slide over a glowing kiln tile to fire before it can leave, wet clay
+that stops a block dead, and kiln doors that open once another colour has
+gone out. A tip card explains each one the first time. In the shop: tray
+rims (Neon kiln, Lava, Raku, Celadon), three new tray themes, three exit
+effects and two win effects. Your stars are kept.
+```
+
 1.2.0:
 
 ```
