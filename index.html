@@ -115,6 +115,12 @@
         <div class="board-wrap">
           <canvas id="board" aria-label="Puzzle board"></canvas>
           <img class="companion" id="companion" alt="" hidden />
+          <!-- Level 1 tutorial: a fingertip showing the swipe, and one line of help. -->
+          <div class="coach-hand" id="coach-hand" aria-hidden="true" hidden></div>
+          <div class="coach" id="coach" role="status" hidden>
+            <p id="coach-text"></p>
+            <button class="coach-skip" id="coach-skip">Skip</button>
+          </div>
         </div>
         <div class="tools">
           <button class="tool tool-util" id="btn-undo">

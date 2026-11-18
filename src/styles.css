@@ -1798,3 +1798,76 @@ hr {
   font-size: 0.92rem;
   line-height: 1.35;
 }
+
+/* ---------------------------------------------------------- tutorial */
+
+.coach {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 10px 10px 16px;
+  background: var(--surface);
+  border: 3px solid var(--surface-edge);
+  border-radius: 18px;
+  box-shadow: 0 5px 0 var(--surface-edge);
+  color: var(--text);
+  z-index: 5;
+  pointer-events: auto;
+}
+
+.coach p {
+  flex: 1;
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.coach-skip {
+  flex: none;
+  background: transparent;
+  border: 2px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.coach[hidden],
+.coach-hand[hidden] {
+  display: none !important;
+}
+
+/* A fingertip: a pale disc with a moulded rim, pressing down then swiping. */
+.coach-hand {
+  position: absolute;
+  width: 30px;
+  height: 30px;
+  margin: -15px 0 0 -15px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.85);
+  border: 3px solid rgba(33, 40, 50, 0.9);
+  /* A touch ring around the fingertip, and its moulded underside. */
+  box-shadow: 0 0 0 7px rgba(255, 255, 255, 0.28), 0 4px 0 7px rgba(33, 40, 50, 0.3);
+  pointer-events: none;
+  z-index: 4;
+  animation: coach-swipe 1.6s ease-in-out infinite;
+}
+
+@keyframes coach-swipe {
+  0% { transform: translate(0, 0) scale(1.15); opacity: 0; }
+  15% { transform: translate(0, 0) scale(1); opacity: 1; }
+  70% { transform: translate(var(--dx), var(--dy)) scale(1); opacity: 1; }
+  100% { transform: translate(var(--dx), var(--dy)) scale(1); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .coach-hand { animation: none; }
+}

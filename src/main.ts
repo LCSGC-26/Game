@@ -74,6 +74,7 @@ import {
 } from './game/cosmetics.ts';
 import { winEffectSeconds, type WinFx } from './game/rim.ts';
 import { generateLevel } from './engine/generator.ts';
+import { maxSlide } from './engine/board.ts';
 import type { Dir, Level } from './engine/types.ts';
 import type { Chapter } from './game/chapters.ts';
 
@@ -1080,6 +1081,7 @@ function resizeCanvas(): void {
 
   viewport = computeViewport(session.level, rect.width, rect.height);
   positionCompanion();
+  updateTutorial();
   requestDraw();
 }
 
@@ -1098,6 +1100,7 @@ function updateHud(): void {
     `${session.moves} ${session.moves === 1 ? 'move' : 'moves'} · par ${session.par}`;
   $('game-coins').textContent = String(saveData.coins);
   $<HTMLButtonElement>('btn-undo').disabled = !session.canUndo();
+  updateTutorial();
 }
 
 /**
@@ -1196,6 +1199,7 @@ const drag = new DragController(
     },
     onPickUp: () => {
       hintedBlocks = [];
+      $('coach-hand').hidden = true;
       sfx.pick();
     },
     onBeforeExit: (blockId: number, dir: Dir) => {
@@ -1223,6 +1227,7 @@ const drag = new DragController(
 
 function checkComplete(): void {
   if (!session || !session.isComplete()) return;
+  if (dailyDay === null && currentLevelId === 1) endTutorial();
 
   const stars = session.stars();
   const moves = session.moves;
@@ -1306,6 +1311,7 @@ function beginSession(level: Level, chapter: Chapter): void {
   session = new Session(level);
   placeCompanion();
   hintedBlocks = [];
+  coachBlock = null;
   winFxStartMs = -1;
   particles.clear();
   drag.cancel();
@@ -1384,6 +1390,86 @@ function showObstacleTips(level: Level): void {
   }
   persist();
   $('overlay-tip').hidden = false;
+}
+
+/* -------------------------------------------------------------- tutorial */
+
+/**
+ * Level 1 teaches itself: the next useful block glows, a fingertip shows the
+ * swipe, and one line says what it does. It follows the player's own line
+ * (session.hint() re-plans if they wander) and retires once level 1 is won.
+ */
+function tutorialActive(): boolean {
+  return (
+    session !== null &&
+    dailyDay === null &&
+    currentLevelId === 1 &&
+    !saveData.tipsSeen.includes('tutorial') &&
+    !session.isComplete()
+  );
+}
+
+function endTutorial(): void {
+  if (!saveData.tipsSeen.includes('tutorial')) {
+    saveData.tipsSeen.push('tutorial');
+    persist();
+  }
+  $('coach').hidden = true;
+  $('coach-hand').hidden = true;
+}
+
+/** The block the previous coach line was about, so the next can say "it". */
+let coachBlock: { id: number; moves: number } | null = null;
+
+function updateTutorial(): void {
+  const coach = $('coach');
+  const hand = $('coach-hand');
+  if (!tutorialActive()) {
+    coach.hidden = true;
+    hand.hidden = true;
+    return;
+  }
+  const outcome = session!.hint();
+  if (outcome.kind !== 'move') {
+    coach.hidden = true;
+    hand.hidden = true;
+    return;
+  }
+  const { blockId, dir } = outcome.move;
+  const block = session!.level.blocks.find((b) => b.id === blockId);
+  if (!block) return;
+
+  const leaves = maxSlide(session!.level, block, dir).exits;
+  let text: string;
+  if (session!.moves === 0) text = `Drag the glowing block ${dir}. Blocks slide until something stops them.`;
+  else if (leaves) {
+    const same = coachBlock !== null && coachBlock.id === blockId && coachBlock.moves < session!.moves;
+    text = same
+      ? `Slide it ${dir}, out through the gate of the same colour.`
+      : `Slide the glowing block ${dir}, out through the gate of the same colour.`;
+  }
+  else text = `Now slide the glowing block ${dir} to clear the way.`;
+  if (session!.level.blocks.filter((b) => !b.exited && b.kind === 'block').length === 1 && leaves) {
+    text = 'Last one! Clear every block to finish the level.';
+  }
+  if (coachBlock === null || coachBlock.id !== blockId) coachBlock = { id: blockId, moves: session!.moves };
+  $('coach-text').textContent = text;
+  coach.hidden = false;
+
+  hintedBlocks = [blockId];
+  if (drag.visual) {
+    hand.hidden = true;
+  } else {
+    const centre = blockCentre(block, viewport);
+    const step = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] }[dir];
+    // Down and right of centre, where a fingertip would sit, so it never hides the block's glyph.
+    hand.style.left = `${centre.x + viewport.cell * 0.3}px`;
+    hand.style.top = `${centre.y + viewport.cell * 0.35}px`;
+    hand.style.setProperty('--dx', `${step[0] * viewport.cell * 1.4}px`);
+    hand.style.setProperty('--dy', `${step[1] * viewport.cell * 1.4}px`);
+    hand.hidden = false;
+  }
+  requestDraw();
 }
 
 /** Dev only: start a board from a Level object, e.g. one made in the console. */
@@ -1513,6 +1599,11 @@ function bindNavigation(): void {
   }
   $<HTMLImageElement>('home-daily-icon').src = depthUrl('icon-daily-kiln.svg');
   $('btn-daily-play').addEventListener('click', startDaily);
+  $('coach-skip').addEventListener('click', () => {
+    endTutorial();
+    hintedBlocks = [];
+    requestDraw();
+  });
   $('tip-ok').addEventListener('click', () => {
     $('overlay-tip').hidden = true;
   });
