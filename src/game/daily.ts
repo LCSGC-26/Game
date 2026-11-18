@@ -43,6 +43,13 @@ export function dailyDifficulty(day: number): number {
   return WEEKDAY_DIFFICULTY[(day + 3) % 7];
 }
 
+/**
+ * Search settings for building the day's board on the phone: small enough to
+ * stay well under a second on a low-end device, with a short climb so the
+ * board needs some planning rather than only sliding blocks out.
+ */
+export const DAILY_GENERATION = { maxAttempts: 30, maxStatesPerSolve: 20_000, climb: 8, hintBudget: 20_000 } as const;
+
 /** Coins for the first clear of each day's puzzle. */
 export const DAILY_REWARD = 15;
 

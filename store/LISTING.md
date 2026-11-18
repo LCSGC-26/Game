@@ -102,6 +102,18 @@ November 2026; re-check when a feature changes.*
 
 ## Release notes (500 characters max)
 
+1.2.0:
+
+```
+Harder puzzles, from testers' feedback. Levels 4 to 200 are rebuilt so you
+have to plan a few moves ahead before blocks can leave, not just slide them
+out. New Kiln heat setting: Warm, Hot or White-hot, harder versions of every
+level, with a coin bonus for clearing them hotter. Your progress and the
+stars you already earned are kept.
+```
+
+1.1.0:
+
 ```
 New: the Daily Kiln, a fresh puzzle every day with streak badges. A daily
 gift with a new friend on day 7. The Potter's Ledger, 39 goals that pay

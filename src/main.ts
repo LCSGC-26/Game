@@ -12,7 +12,10 @@ import './styles.css';
 import { Haptics, ImpactStyle, NotificationType } from '@capacitor/haptics';
 
 import { DragController } from './game/input.ts';
-import { LEVEL_COUNT, getLevel } from './game/levels.ts';
+import { LEVEL_COUNT, PACK_VERSION, getLevel } from './game/levels.ts';
+import { migrateBestMoves } from './game/migrate.ts';
+import { HEAT_NAMES, bestOn, bestStars, clearedCount, isCleared, levelReward, starsOn } from './game/records.ts';
+import { HEATS, type Heat } from './engine/generator.ts';
 import { Session } from './game/session.ts';
 import {
   blockCentre,
@@ -31,6 +34,7 @@ import * as store from './game/save.ts';
 import { CHAPTERS, CHAPTER_SIZE, backgroundUrl, chapterOf, mapUrl } from './game/chapters.ts';
 import { chapterNodesSvg, type NodeInfo } from './game/map-view.ts';
 import {
+  DAILY_GENERATION,
   DAILY_REWARD,
   GIFT_COINS,
   GIFT_DAY7_COINS,
@@ -68,6 +72,18 @@ const $ = <T extends HTMLElement>(id: string): T => {
 };
 
 let saveData = store.load();
+
+// Levels 4 to 200 were rebuilt in pack 2: restate old records in the new pars.
+if (saveData.packVersion < PACK_VERSION) {
+  saveData.bestMoves = migrateBestMoves(saveData.bestMoves, (id) => getLevel(id)?.minMoves ?? null);
+  saveData.packVersion = PACK_VERSION;
+  store.save(saveData);
+}
+
+/** The heat of the level now on screen (the Daily Kiln is always Warm). */
+let currentHeat: Heat = 'warm';
+
+const parAt = (id: number, heat: Heat): number | null => getLevel(id, heat)?.minMoves ?? null;
 let session: Session | null = null;
 let currentLevelId = 1;
 let viewport: Viewport = { cell: 40, originX: 0, originY: 0, wall: 12 };
@@ -184,7 +200,7 @@ function confirmAction(title: string, body: string, onYes: () => void): void {
 /* ------------------------------------------------------------------ screens */
 
 function renderHome(): void {
-  const cleared = Object.keys(saveData.bestMoves).length;
+  const cleared = clearedCount(saveData);
   $('home-progress').textContent =
     cleared === 0
       ? `${LEVEL_COUNT} solver-checked levels. No timers, no lives.`
@@ -240,8 +256,17 @@ function chapterIndexFor(levelId: number): number {
 
 function renderLevelGrid(): void {
   $('levels-coins').textContent = `${saveData.coins} coins`;
+  renderHeatChip();
   shownChapter = chapterIndexFor(Math.min(saveData.highestUnlocked, LEVEL_COUNT));
   renderChapter();
+}
+
+function renderHeatChip(): void {
+  const heat = saveData.settings.heat;
+  const chip = $('btn-heat');
+  chip.dataset.heat = heat;
+  chip.textContent = HEAT_NAMES[heat];
+  chip.setAttribute('aria-label', `Kiln heat: ${HEAT_NAMES[heat]}. Tap to change.`);
 }
 
 function renderChapter(): void {
@@ -251,10 +276,9 @@ function renderChapter(): void {
   let stars = 0;
   const nodes: NodeInfo[] = chapter.nodes.map((_, i) => {
     const level = first + i;
-    const best = saveData.bestMoves[level];
-    if (best !== undefined) {
-      const data = getLevel(level);
-      const earned = data ? starsFor(best, data.minMoves) : 1;
+    const heat = saveData.settings.heat;
+    const earned = starsOn(saveData, level, heat, parAt(level, heat));
+    if (earned !== null) {
       stars += earned;
       return { level, state: 'done', stars: earned };
     }
@@ -531,7 +555,7 @@ function today(): number {
 function dailyBoard(day: number): Level {
   let level = dailyBoards.get(day);
   if (!level) {
-    level = generateLevel(dailyLevelId(day), { profileLevel: dailyDifficulty(day) });
+    level = generateLevel(dailyLevelId(day), { ...DAILY_GENERATION, profileLevel: dailyDifficulty(day) });
     dailyBoards.set(day, level);
   }
   return level;
@@ -541,6 +565,7 @@ function startDaily(): void {
   const day = today();
   const go = (): void => {
     dailyDay = day;
+    currentHeat = 'warm';
     beginSession(dailyBoard(day), CHAPTERS[day % CHAPTERS.length]);
   };
   if (dailyBoards.has(day)) {
@@ -624,8 +649,7 @@ function renderDaily(): void {
 
 function goalStats(): GoalStats {
   return {
-    bestMoves: saveData.bestMoves,
-    parFor: (id) => getLevel(id)?.minMoves ?? null,
+    starsFor: (id) => bestStars(saveData, id, parAt),
     flicks: saveData.flicks,
     dailyClears: saveData.daily.clearedDays.length,
   };
@@ -859,10 +883,9 @@ function potState(chapter: Chapter): 'empty' | 'fired' | 'gold' {
   const first = (chapter.n - 1) * CHAPTER_SIZE + 1;
   let stars = 0;
   for (let id = first; id < first + CHAPTER_SIZE; id++) {
-    const best = saveData.bestMoves[id];
-    if (best === undefined) return 'empty';
-    const level = getLevel(id);
-    stars += level ? starsFor(best, level.minMoves) : 1;
+    const earned = bestStars(saveData, id, parAt);
+    if (earned === null) return 'empty';
+    stars += earned;
   }
   return stars === CHAPTER_SIZE * 3 ? 'gold' : 'fired';
 }
@@ -983,12 +1006,6 @@ function positionCompanion(): void {
 
 /* --------------------------------------------------------------------- game */
 
-function starsFor(moves: number, par: number): number {
-  if (moves <= par) return 3;
-  if (moves <= par + Math.max(2, Math.ceil(par * 0.4))) return 2;
-  return 1;
-}
-
 function resizeCanvas(): void {
   const wrap = canvas.parentElement;
   if (!wrap || !session) return;
@@ -1014,7 +1031,8 @@ function updateHud(): void {
     $('game-level-cap').textContent = 'Daily';
     $('game-level').textContent = `${date} ${MONTHS[month].slice(0, 3)}`;
   } else {
-    $('game-level-cap').textContent = 'Level';
+    // Hot and White-hot replace the small "Level" caption, so the number keeps its size.
+    $('game-level-cap').textContent = currentHeat === 'warm' ? 'Level' : HEAT_NAMES[currentHeat];
     $('game-level').textContent = String(currentLevelId);
   }
   $('game-moves').textContent =
@@ -1113,19 +1131,18 @@ function checkComplete(): void {
     completeDaily(dailyDay, stars, moves);
     return;
   }
-  const previousBest = saveData.bestMoves[currentLevelId];
-  const firstClear = previousBest === undefined;
+  const records = bestOn(saveData, currentHeat);
+  const previousBest = records[currentLevelId];
+  // Coins are paid once per level number, on the first clear at any heat.
+  const alreadyCleared = isCleared(saveData, currentLevelId);
 
-  if (firstClear || moves < previousBest) saveData.bestMoves[currentLevelId] = moves;
+  if (previousBest === undefined || moves < previousBest) records[currentLevelId] = moves;
   if (currentLevelId >= saveData.highestUnlocked && currentLevelId < LEVEL_COUNT) {
     saveData.highestUnlocked = currentLevelId + 1;
   }
 
-  let reward = 0;
-  if (firstClear) {
-    reward = 5 + stars * 2;
-    saveData.coins += reward;
-  }
+  const reward = levelReward(stars, currentHeat, alreadyCleared);
+  saveData.coins += reward;
   saveData.levelsSinceLastAd++;
   persist();
 
@@ -1152,7 +1169,11 @@ function checkComplete(): void {
     moves <= session.par
       ? `Solved in ${moves} moves — that matches par.`
       : `Solved in ${moves} moves. Par is ${session.par}.`;
-  $('win-reward').textContent = firstClear ? `+${reward} coins` : 'Already cleared — no new coins.';
+  $('win-reward').textContent = reward === 0
+    ? 'Already cleared. No new coins.'
+    : currentHeat === 'warm'
+      ? `+${reward} coins`
+      : `+${reward} coins (${HEAT_NAMES[currentHeat]} bonus)`;
 
   const next = $<HTMLButtonElement>('btn-next');
   next.hidden = currentLevelId >= LEVEL_COUNT;
@@ -1170,12 +1191,14 @@ function checkComplete(): void {
 }
 
 function startLevel(id: number): void {
-  const level = getLevel(id);
+  const heat = saveData.settings.heat;
+  const level = getLevel(id, heat);
   if (!level) {
     toast('That level is not in this pack yet.');
     return;
   }
   currentLevelId = id;
+  currentHeat = heat;
   dailyDay = null;
   beginSession(level, chapterOf(id));
 }
@@ -1265,6 +1288,30 @@ function bindSettings(): void {
   bind('set-haptics', 'haptics');
   bind('set-glyphs', 'colourBlindShapes');
   bind('set-motion', 'reduceMotion', () => applyTheme());
+
+  // Kiln heat applies from the next level started, never mid-level.
+  const seg = $('set-heat');
+  const paintHeat = (): void => {
+    for (const b of seg.querySelectorAll<HTMLButtonElement>('button')) {
+      b.setAttribute('aria-checked', String(b.dataset.heat === saveData.settings.heat));
+    }
+  };
+  for (const b of seg.querySelectorAll<HTMLButtonElement>('button')) {
+    b.addEventListener('click', () => {
+      saveData.settings.heat = b.dataset.heat as Heat;
+      persist();
+      paintHeat();
+    });
+  }
+  paintHeat();
+  $('btn-heat').addEventListener('click', () => {
+    const next = HEATS[(HEATS.indexOf(saveData.settings.heat) + 1) % HEATS.length];
+    saveData.settings.heat = next;
+    persist();
+    paintHeat();
+    renderHeatChip();
+    renderChapter();
+  });
 
   $('btn-reset').addEventListener('click', () => {
     confirmAction('Reset progress?', 'This clears every level, star and coin on this device. It cannot be undone.', () => {

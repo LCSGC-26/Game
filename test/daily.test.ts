@@ -6,6 +6,7 @@ import {
   badgeThreshold,
   claimGift,
   currentStreak,
+  DAILY_GENERATION,
   dailyDifficulty,
   dailyLevelId,
   dayNumber,
@@ -91,7 +92,7 @@ describe('Daily Kiln streak', () => {
   });
 
   it('builds a solvable daily board that is not a pack level', () => {
-    const level = generateLevel(dailyLevelId(D), { profileLevel: dailyDifficulty(D) });
+    const level = generateLevel(dailyLevelId(D), { ...DAILY_GENERATION, profileLevel: dailyDifficulty(D) });
     assert.ok(level.id > 200);
     assert.ok(solve(level).solved);
   });
@@ -122,8 +123,7 @@ describe('daily gift', () => {
 
 describe("Potter's Ledger", () => {
   const stats = (over: Partial<GoalStats> = {}): GoalStats => ({
-    bestMoves: {},
-    parFor: () => 5,
+    starsFor: () => null,
     flicks: 0,
     dailyClears: 0,
     ...over,
@@ -134,13 +134,12 @@ describe("Potter's Ledger", () => {
   });
 
   it('pays a chapter clear once every level in it is cleared', () => {
-    const bestMoves: Record<number, number> = {};
-    for (let i = 1; i <= 20; i++) bestMoves[i] = 9; // over par: 1 star each
-    const ready = claimable(stats({ bestMoves }), []).map((g) => g.id);
+    const starsFor = (id: number): number | null => (id <= 20 ? 1 : null); // over par: 1 star each
+    const ready = claimable(stats({ starsFor }), []).map((g) => g.id);
     assert.ok(ready.includes('chapter-1-clear'));
     assert.ok(ready.includes('clears-10'));
     assert.ok(!ready.includes('chapter-1-stars'));
-    assert.ok(!claimable(stats({ bestMoves }), ['chapter-1-clear']).some((g) => g.id === 'chapter-1-clear'));
+    assert.ok(!claimable(stats({ starsFor }), ['chapter-1-clear']).some((g) => g.id === 'chapter-1-clear'));
   });
 
   it('counts flicks and dailies', () => {

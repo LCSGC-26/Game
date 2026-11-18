@@ -8,6 +8,7 @@
  * are preserved rather than dropped.
  */
 
+import { HEATS, type Heat } from '../engine/generator.ts';
 import { defaultDaily, defaultGift, type DailyState, type GiftState } from './daily.ts';
 
 const STORAGE_KEY = 'colourjam.save.v1';
@@ -32,6 +33,8 @@ export interface Settings {
   effect: string;
   /** Character id sitting beside the board, or '' for nobody. */
   companion: string;
+  /** Kiln heat for levels started from the map: Warm is the main pack. */
+  heat: Heat;
 }
 
 export interface SaveData {
@@ -39,6 +42,10 @@ export interface SaveData {
   highestUnlocked: number;
   /** Best (fewest) move count per completed level. */
   bestMoves: Record<number, number>;
+  /** Best move counts on the Hot and White-hot packs (Warm uses bestMoves). */
+  heatBest: { hot: Record<number, number>; white: Record<number, number> };
+  /** Which level pack the stored move counts were set on (1 = original, 2 = rebuilt). */
+  packVersion: number;
   coins: number;
   unlockedThemes: string[];
   adsRemoved: boolean;
@@ -68,6 +75,7 @@ export const DEFAULT_SETTINGS: Settings = {
   glaze: 'gloss',
   effect: '',
   companion: '',
+  heat: 'warm',
 };
 
 export function defaultSave(): SaveData {
@@ -75,6 +83,8 @@ export function defaultSave(): SaveData {
     version: 1,
     highestUnlocked: 1,
     bestMoves: {},
+    heatBest: { hot: {}, white: {} },
+    packVersion: 2,
     coins: 0,
     unlockedThemes: ['slate'],
     adsRemoved: false,
@@ -102,6 +112,19 @@ const numbers = (v: unknown): number[] =>
   Array.isArray(v) ? v.filter((n): n is number => typeof n === 'number' && Number.isInteger(n) && n >= 0) : [];
 
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((t): t is string => typeof t === 'string') : []);
+
+function reconcileMoves(raw: unknown): Record<number, number> {
+  const out: Record<number, number> = {};
+  if (isRecord(raw)) {
+    for (const [key, value] of Object.entries(raw)) {
+      const id = Number(key);
+      if (Number.isInteger(id) && id > 0 && typeof value === 'number' && Number.isInteger(value) && value > 0) {
+        out[id] = value;
+      }
+    }
+  }
+  return out;
+}
 
 function reconcileDaily(raw: unknown): DailyState {
   if (!isRecord(raw)) return defaultDaily();
@@ -155,6 +178,7 @@ export function reconcile(raw: unknown): SaveData {
     glaze: typeof storedSettings.glaze === 'string' ? storedSettings.glaze : base.settings.glaze,
     effect: typeof storedSettings.effect === 'string' ? storedSettings.effect : base.settings.effect,
     companion: typeof storedSettings.companion === 'string' ? storedSettings.companion : base.settings.companion,
+    heat: HEATS.includes(storedSettings.heat as Heat) ? (storedSettings.heat as Heat) : 'warm',
   };
 
   const themes = Array.isArray(raw.unlockedThemes)
@@ -168,6 +192,12 @@ export function reconcile(raw: unknown): SaveData {
         ? Math.floor(raw.highestUnlocked)
         : base.highestUnlocked,
     bestMoves,
+    heatBest: {
+      hot: reconcileMoves(isRecord(raw.heatBest) ? raw.heatBest.hot : undefined),
+      white: reconcileMoves(isRecord(raw.heatBest) ? raw.heatBest.white : undefined),
+    },
+    // A save from before the rebuilt pack has no marker: it was set on pack 1.
+    packVersion: whole(raw.packVersion, 1) ?? 1,
     coins: typeof raw.coins === 'number' && raw.coins >= 0 ? Math.floor(raw.coins) : base.coins,
     unlockedThemes: themes.includes('slate') ? themes : ['slate', ...themes],
     // A purchase is never silently revoked by a bad read.

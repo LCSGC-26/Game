@@ -14,14 +14,17 @@
 
 import { solve } from './solver.ts';
 import { Rng, seedForLevel } from './rng.ts';
+import { applyMove, findBlock, legalMoves, maxSlide } from './board.ts';
 import {
   type Block,
   type Cell,
+  cloneLevel,
   CRATE_COLOR,
   type Dir,
   DIR_VECTORS,
   type Gate,
   type Level,
+  type Move,
   type Side,
   shapeHeight,
   shapeWidth,
@@ -81,68 +84,98 @@ export interface DifficultyProfile {
   shapePool: Cell[][];
   /** Reverse slides per block; more scrambling means a longer solution. */
   scramble: [number, number];
+  /**
+   * Planning depth: the longest run of setup moves the shortest solution
+   * needs before the next block can leave. At 1 every exit is "move the one
+   * blocker aside", which reads as busywork; at 2 and up the player has to
+   * see a sequence before it pays off.
+   */
+  minDepth: number;
+  /** How many separate times the solution needs a run of 2+ setup moves. */
+  minThinks: number;
 }
 
-export function profileForLevel(id: number): DifficultyProfile {
-  if (id <= 8) {
-    return {
-      width: 5,
-      height: 5,
-      blockCount: 3,
-      colorCount: 2,
-      crateCount: 0,
-      extraMoves: [0, 3],
-      shapePool: SMALL_SHAPES,
-      scramble: [1, 2],
-    };
+/**
+ * Kiln heat: the player's chosen difficulty. Warm is the main curve; Hot and
+ * White-hot are separate packs built from the same level numbers.
+ */
+export type Heat = 'warm' | 'hot' | 'white';
+export const HEATS: Heat[] = ['warm', 'hot', 'white'];
+
+function band(
+  width: number,
+  height: number,
+  blockCount: number,
+  colorCount: number,
+  crateCount: number,
+  detours: [number, number],
+  [minDepth, minThinks]: [number, number],
+  shapePool: Cell[][],
+  scramble: [number, number],
+): DifficultyProfile {
+  return { width, height, blockCount, colorCount, crateCount, extraMoves: detours, minDepth, minThinks, shapePool, scramble };
+}
+
+function warmProfile(id: number): DifficultyProfile {
+  // Levels 1 to 3 teach the rules; nothing is in the way yet.
+  if (id <= 3) return band(5, 5, 3, 2, 0, [0, 3], [0, 0], SMALL_SHAPES, [1, 2]);
+  // From level 4 the difficulty is in the order, not the block count: each
+  // band asks for longer and more frequent chains of setup moves before a
+  // block can leave.
+  if (id <= 10) return band(5, 6, 4, 2, 0, [2, 7], [2, 1], MEDIUM_SHAPES, [2, 3]);
+  if (id <= 25) return band(6, 6, 5, 3, 1, [3, 9], [2, 2], MEDIUM_SHAPES, [2, 4]);
+  if (id <= 50) return band(6, 6, 6, 3, 1, [4, 11], [3, 2], MEDIUM_SHAPES, [2, 4]);
+  if (id <= 90) return band(6, 7, 6, 3, 2, [5, 13], [3, 2], SHAPES, [3, 5]);
+  // The curve stops at 91: later levels stay at this level of planning
+  // rather than climbing. (Roomier 7x7 boards were tried and needed less
+  // thought, not more.)
+  return band(6, 7, 6, 3, 2, [5, 13], [3, 2], SHAPES, [3, 5]);
+}
+
+function hotProfile(id: number): DifficultyProfile {
+  // Same tray as the Warm plateau, climbed further: between Warm and White-hot.
+  if (id <= 25) return band(6, 7, 6, 3, 2, [5, 13], [4, 2], SHAPES, [3, 5]);
+  return band(6, 7, 6, 3, 2, [5, 14], [4, 2], SHAPES, [3, 5]);
+}
+
+function whiteProfile(id: number): DifficultyProfile {
+  // Tight 6x7 trays: the build climbs these longest, for the deepest plans.
+  if (id <= 25) return band(6, 7, 6, 3, 2, [5, 14], [4, 3], SHAPES, [3, 5]);
+  return band(6, 7, 6, 3, 2, [6, 15], [4, 3], SHAPES, [3, 5]);
+}
+
+export function profileForLevel(id: number, heat: Heat = 'warm'): DifficultyProfile {
+  if (heat === 'hot') return hotProfile(id);
+  if (heat === 'white') return whiteProfile(id);
+  return warmProfile(id);
+}
+
+export interface Difficulty {
+  /** Moves in the shortest solution that are not a block leaving. */
+  detours: number;
+  /** Longest run of setup moves before an exit. */
+  depth: number;
+  /** Runs of two or more setup moves. */
+  thinks: number;
+}
+
+/** How much thinking a solved level needs, beyond sliding blocks out. */
+export function measureDifficulty(level: Level): Difficulty {
+  const playable = level.blocks.filter((b) => b.kind === 'block').length;
+  const board = cloneLevel(level);
+  let run = 0;
+  let depth = 0;
+  let thinks = 0;
+  for (const move of level.solution ?? []) {
+    if (applyMove(board, move).exited) {
+      depth = Math.max(depth, run);
+      if (run >= 2) thinks++;
+      run = 0;
+    } else {
+      run++;
+    }
   }
-  if (id <= 25) {
-    return {
-      width: 5,
-      height: 6,
-      blockCount: 4,
-      colorCount: 2,
-      crateCount: 0,
-      extraMoves: [1, 5],
-      shapePool: MEDIUM_SHAPES,
-      scramble: [1, 2],
-    };
-  }
-  if (id <= 50) {
-    return {
-      width: 6,
-      height: 6,
-      blockCount: 5,
-      colorCount: 3,
-      crateCount: 1,
-      extraMoves: [2, 7],
-      shapePool: MEDIUM_SHAPES,
-      scramble: [1, 3],
-    };
-  }
-  if (id <= 90) {
-    return {
-      width: 6,
-      height: 7,
-      blockCount: 6,
-      colorCount: 3,
-      crateCount: 1,
-      extraMoves: [2, 9],
-      shapePool: SHAPES,
-      scramble: [2, 4],
-    };
-  }
-  // The curve stops here. Later levels stay hard; they do not keep climbing.
-  return {
-    width: 7,
-    height: 7,
-    blockCount: 7,
-    colorCount: 3,
-    crateCount: 2,
-    extraMoves: [2, 12],
-    shapePool: SHAPES,
-    scramble: [3, 6],
-  };
+  return { detours: Math.max(0, level.minMoves - playable), depth, thinks };
 }
 
 interface Placement {
@@ -263,6 +296,85 @@ function scrambleBackwards(
   return pos;
 }
 
+const SIDE_DIR: Record<Side, Dir> = { top: 'up', bottom: 'down', left: 'left', right: 'right' };
+
+function footprint(profile: DifficultyProfile, shape: Cell[], pos: Cell): number[] {
+  return shape.map((c) => (pos.y + c.y) * profile.width + pos.x + c.x);
+}
+
+/** Cells a block would sweep through on its way out of the given side. */
+function exitCorridor(profile: DifficultyProfile, shape: Cell[], pos: Cell, side: Side): Set<number> {
+  const vec = DIR_VECTORS[SIDE_DIR[side]];
+  const own = new Set(footprint(profile, shape, pos));
+  const cells = new Set<number>();
+  for (let step = 1; step <= profile.width + profile.height; step++) {
+    let inside = false;
+    for (const c of shape) {
+      const x = pos.x + c.x + vec.x * step;
+      const y = pos.y + c.y + vec.y * step;
+      if (x < 0 || y < 0 || x >= profile.width || y >= profile.height) continue;
+      inside = true;
+      const i = y * profile.width + x;
+      if (!own.has(i)) cells.add(i);
+    }
+    if (!inside) break;
+  }
+  return cells;
+}
+
+/**
+ * Builds a chain of obstructions in front of a newly placed block. A block
+ * already on the board is slid (backwards in time) into the cells the new
+ * block needs to leave through; then another block is slid into the cells
+ * that first one needs to slide back through; and so on. Played forwards,
+ * the player has to undo the chain from the far end before the block can
+ * leave, which is what turns "slide it out" into a plan.
+ */
+function obstruct(
+  rng: Rng,
+  profile: DifficultyProfile,
+  occupied: Uint8Array,
+  placements: Placement[],
+  self: number,
+  target: Set<number>,
+  links: number,
+): void {
+  const used = new Set<number>([self]);
+  for (let link = 0; link < links && target.size > 0; link++) {
+    const options: Array<{ index: number; to: Cell; swept: Set<number> }> = [];
+    placements.forEach((p, index) => {
+      if (used.has(index)) return;
+      const from = footprint(profile, p.shape, p.pos);
+      setCells(occupied, profile, p.shape, p.pos, 0);
+      for (const dir of ALL_DIRS) {
+        const vec = DIR_VECTORS[dir];
+        for (let d = 1; d <= profile.width + profile.height; d++) {
+          const to = { x: p.pos.x + vec.x * d, y: p.pos.y + vec.y * d };
+          if (!cellsFree(occupied, profile, p.shape, to)) break;
+          const landed = footprint(profile, p.shape, to);
+          if (!landed.some((i) => target.has(i))) continue;
+          // The way back: every cell the block passes through, less where it lands.
+          const swept = new Set<number>(from);
+          for (let k = 1; k < d; k++) {
+            for (const i of footprint(profile, p.shape, { x: p.pos.x + vec.x * k, y: p.pos.y + vec.y * k })) swept.add(i);
+          }
+          for (const i of landed) swept.delete(i);
+          options.push({ index, to, swept });
+        }
+      }
+      setCells(occupied, profile, p.shape, p.pos, 1);
+    });
+    if (options.length === 0) return;
+    const pick = rng.pick(options);
+    const p = placements[pick.index];
+    setCells(occupied, profile, p.shape, p.pos, 0);
+    p.pos = pick.to;
+    setCells(occupied, profile, p.shape, p.pos, 1);
+    used.add(pick.index);
+    target = pick.swept;
+  }
+}
+
 function buildCandidate(
   rng: Rng,
   profile: DifficultyProfile,
@@ -313,6 +425,11 @@ function buildCandidate(
       rng.range(profile.scramble[0], profile.scramble[1]) + scrambleBoost,
     );
     placements.push({ shape: spec.shape, color: spec.color, pos });
+    if (profile.minDepth > 0) {
+      const self = placements.length - 1;
+      const corridor = exitCorridor(profile, spec.shape, pos, gate.side);
+      obstruct(rng, profile, occupied, placements, self, corridor, profile.minDepth + rng.range(0, 1));
+    }
   }
 
   for (const p of placements) {
@@ -336,7 +453,83 @@ export interface GenerateOptions {
   scrambleCap?: number;
   /** Use this level number's difficulty instead of the id's own (daily puzzles). */
   profileLevel?: number;
+  /** Kiln heat. Hot and White-hot use their own seeds, so boards differ. */
+  heat?: Heat;
+  /**
+   * Rounds of hill-climbing on the starting position (build time only; each
+   * round is a full solve). 0 leaves the board as built.
+   */
+  climb?: number;
+  /** Largest search the start may need, so in-game hints stay quick. */
+  hintBudget?: number;
+  /** Tries a different seed for the same level (build-time retries). */
+  seedSalt?: number;
+  /**
+   * Keep building candidates until one meets the profile's planning targets.
+   * Each candidate costs a full search, so this is for the build machine.
+   */
+  strict?: boolean;
 }
+
+function planScore(d: Difficulty): number {
+  return d.depth * 10 + d.thinks * 4 + d.detours;
+}
+
+function isExit(level: Level, move: Move): boolean {
+  const block = findBlock(level, move.blockId)!;
+  const reach = maxSlide(level, block, move.dir);
+  return reach.exits && move.distance === reach.distance;
+}
+
+/**
+ * Nudges the starting position around its own reachable space and keeps the
+ * start that needs the most planning. Every nudge is a legal, reversible
+ * slide, so the level stays winnable; each new start is re-solved, so par and
+ * the stored solution stay exact.
+ */
+function climbStart(
+  rng: Rng,
+  level: Level,
+  profile: DifficultyProfile,
+  rounds: number,
+  maxMoves: number,
+  hintBudget: number,
+): Level {
+  // Enough planning to feel like a puzzle, but not a wall: early levels are
+  // capped so the ramp stays gentle.
+  const maxDepth = profile.minDepth + 2;
+  const goodEnough = (d: Difficulty): boolean => d.depth >= profile.minDepth + 1 && d.thinks >= profile.minThinks + 1;
+  // Tutorial levels are left exactly as built.
+  if (profile.minDepth === 0) return level;
+  let best = level;
+  let bestDifficulty = measureDifficulty(level);
+  let bestScore = planScore(bestDifficulty);
+  for (let round = 0; round < rounds && !goodEnough(bestDifficulty); round++) {
+    const next = cloneLevel(best);
+    const steps = rng.range(1, 3);
+    for (let step = 0; step < steps; step++) {
+      const moves = legalMoves(next).filter((m) => !isExit(next, m));
+      if (moves.length === 0) break;
+      applyMove(next, rng.pick(moves));
+    }
+    const result = solve(next, { maxStates: hintBudget });
+    if (!result.solved || result.minMoves > maxMoves) continue;
+    next.minMoves = result.minMoves;
+    next.solution = result.solution;
+    const difficulty = measureDifficulty(next);
+    if (difficulty.depth > maxDepth) continue;
+    const score = planScore(difficulty);
+    // Ties are taken too, so the search can drift across flat ground.
+    if (score >= bestScore) {
+      best = next;
+      bestScore = score;
+      bestDifficulty = difficulty;
+    }
+  }
+  return best;
+}
+
+const HEAT_SEED_OFFSET: Record<Heat, number> = { warm: 0, hot: 50_000, white: 70_000 };
 
 /**
  * Builds level `id`. Deterministic: the same level number produces the same
@@ -346,8 +539,9 @@ export function generateLevel(id: number, options: GenerateOptions = {}): Level 
   const maxAttempts = options.maxAttempts ?? 60;
   const maxStates = options.maxStatesPerSolve ?? 60_000;
   const scrambleCap = options.scrambleCap ?? 8;
-  const profile = profileForLevel(options.profileLevel ?? id);
-  const seed = seedForLevel(id);
+  const heat = options.heat ?? 'warm';
+  const profile = profileForLevel(options.profileLevel ?? id, heat);
+  const seed = seedForLevel(id + HEAT_SEED_OFFSET[heat] + (options.seedSalt ?? 0) * 7_919);
   const rng = new Rng(seed);
 
   const targetMin = profile.blockCount + profile.extraMoves[0];
@@ -360,6 +554,11 @@ export function generateLevel(id: number, options: GenerateOptions = {}): Level 
   // than shipping a level that is easier than its position in the run.
   let boost = 0;
 
+  const climbRounds = options.climb ?? 0;
+  const hintBudget = options.hintBudget ?? maxStates;
+  const finish = (level: Level): Level =>
+    climbRounds > 0 ? climbStart(rng, level, profile, climbRounds, targetMax, hintBudget) : level;
+
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const candidate = buildCandidate(rng, profile, id, seed, boost);
     if (!candidate) continue;
@@ -367,24 +566,33 @@ export function generateLevel(id: number, options: GenerateOptions = {}): Level 
     const result = solve(candidate, { maxStates });
     // Reverse construction guarantees a solution exists; a miss here only
     // means the search budget ran out, so the candidate is simply skipped.
-    if (!result.solved) continue;
+    if (!result.solved || result.statesExplored > hintBudget) continue;
 
     candidate.minMoves = result.minMoves;
     candidate.solution = result.solution;
-    if (result.minMoves >= targetMin && result.minMoves <= targetMax) return candidate;
+    const inBand = result.minMoves >= targetMin && result.minMoves <= targetMax;
+    const { depth, thinks } = measureDifficulty(candidate);
+    // The planning targets can take many candidates to meet, so only the
+    // build insists on them; the Daily Kiln, built on the phone, accepts on
+    // length alone and relies on a short climb.
+    const shortfall =
+      options.strict ? Math.max(0, profile.minDepth - depth) + Math.max(0, profile.minThinks - thinks) : 0;
+    if (inBand && shortfall === 0) return finish(candidate);
 
-    if (result.minMoves < targetMin) boost = Math.min(boost + 1, scrambleCap);
+    if (result.minMoves < targetMin || shortfall > 0) boost = Math.min(boost + 1, scrambleCap);
     else if (result.minMoves > targetMax && boost > 0) boost--;
 
-    const score =
-      result.minMoves < targetMin ? targetMin - result.minMoves : result.minMoves - targetMax;
+    // Too little planning costs most: that is what makes a level feel easy.
+    const bandMiss =
+      result.minMoves < targetMin ? targetMin - result.minMoves : Math.max(0, result.minMoves - targetMax);
+    const score = shortfall * 3 + bandMiss;
     if (score < bestScore) {
       bestScore = score;
       best = candidate;
     }
   }
 
-  if (best) return best;
+  if (best) return finish(best);
 
   // Nothing landed in the band. Step the profile down until something does.
   // Every rung still returns a real, solver-verified board - the player never
@@ -404,7 +612,7 @@ export function generateLevel(id: number, options: GenerateOptions = {}): Level 
       if (!result.solved) continue;
       candidate.minMoves = result.minMoves;
       candidate.solution = result.solution;
-      return candidate;
+      return finish(candidate);
     }
   }
 

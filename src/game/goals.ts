@@ -6,11 +6,12 @@
 
 import { CHAPTERS, CHAPTER_SIZE } from './chapters.ts';
 
+/** Every level id the chapters cover. */
+const MAX_LEVEL_ID = CHAPTERS.length * CHAPTER_SIZE;
+
 export interface GoalStats {
-  /** Best moves per cleared level. */
-  bestMoves: Record<number, number>;
-  /** Par (three stars) per level id, for levels that exist. */
-  parFor(levelId: number): number | null;
+  /** Best stars across every heat for a level, or null if never cleared at any heat. */
+  starsFor(levelId: number): number | null;
   flicks: number;
   dailyClears: number;
 }
@@ -22,29 +23,19 @@ export interface Goal {
   progress(stats: GoalStats): { current: number; target: number };
 }
 
-function starsFor(moves: number, par: number): number {
-  if (moves <= par) return 3;
-  if (moves <= par + Math.max(2, Math.ceil(par * 0.4))) return 2;
-  return 1;
-}
-
 function chapterGoals(): Goal[] {
   const goals: Goal[] = [];
   for (const chapter of CHAPTERS) {
     const first = (chapter.n - 1) * CHAPTER_SIZE + 1;
     const ids = Array.from({ length: CHAPTER_SIZE }, (_, i) => first + i);
     const stars = (s: GoalStats): number =>
-      ids.reduce((sum, id) => {
-        const best = s.bestMoves[id];
-        const par = s.parFor(id);
-        return best === undefined ? sum : sum + (par === null ? 1 : starsFor(best, par));
-      }, 0);
+      ids.reduce((sum, id) => sum + (s.starsFor(id) ?? 0), 0);
     goals.push(
       {
         id: `chapter-${chapter.n}-clear`,
         title: `Clear every level in ${chapter.name}`,
         reward: 25,
-        progress: (s) => ({ current: ids.filter((id) => s.bestMoves[id] !== undefined).length, target: CHAPTER_SIZE }),
+        progress: (s) => ({ current: ids.filter((id) => s.starsFor(id) !== null).length, target: CHAPTER_SIZE }),
       },
       {
         id: `chapter-${chapter.n}-stars`,
@@ -73,7 +64,11 @@ function tiered(id: string, title: (n: number) => string, tiers: [number, number
 }
 
 export const GOALS: Goal[] = [
-  ...tiered('clears', (n) => `Clear ${n} levels`, [[10, 10], [50, 30], [100, 60]], (s) => Object.keys(s.bestMoves).length),
+  ...tiered('clears', (n) => `Clear ${n} levels`, [[10, 10], [50, 30], [100, 60]], (s) => {
+    let n = 0;
+    for (let id = 1; id <= MAX_LEVEL_ID; id++) if (s.starsFor(id) !== null) n++;
+    return n;
+  }),
   ...tiered('flicks', (n) => `Flick ${n.toLocaleString('en-AU')} blocks out through their gates`, [[100, 15], [500, 40], [1000, 75]], (s) => s.flicks),
   ...tiered('daily', (n) => (n === 1 ? 'Clear a Daily Kiln' : `Clear ${n} Daily Kilns`), [[1, 10], [10, 30], [50, 100]], (s) => s.dailyClears),
   ...chapterGoals(),

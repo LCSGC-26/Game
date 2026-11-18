@@ -62,8 +62,12 @@
         <header class="bar">
           <button class="icon-btn" data-back aria-label="Back">←</button>
           <h2 id="chapter-title">Kiln Meadow</h2>
-          <span class="coins" id="levels-coins"></span>
+          <span class="bar-end">
+            <span class="coins" id="levels-coins"></span>
+          </span>
         </header>
+        <!-- Kiln heat sits under the bar, so long chapter names keep their room. -->
+        <button class="heat-chip heat-float" id="btn-heat" data-heat="warm" aria-label="Kiln heat: Warm. Tap to change.">Warm</button>
         <!-- One chapter's illustrated road; the level tiles are drawn from the save. -->
         <div class="map-scroll" id="map-scroll">
           <div class="map" id="map">
@@ -180,6 +184,15 @@
             <input type="checkbox" id="set-glyphs" />
           </label>
           <label class="row"><span>Reduce motion</span><input type="checkbox" id="set-motion" /></label>
+          <div class="row row-stack">
+            <span>Kiln heat</span>
+            <div class="heat-seg" id="set-heat" role="radiogroup" aria-label="Kiln heat">
+              <button type="button" role="radio" data-heat="warm">Warm</button>
+              <button type="button" role="radio" data-heat="hot">Hot</button>
+              <button type="button" role="radio" data-heat="white">White-hot</button>
+            </div>
+            <small>Hot and White-hot are harder versions of every level. Progress is shared; coins for a level are paid once, with a bonus for clearing it hotter.</small>
+          </div>
           <hr />
           <!-- Remove Ads and Restore purchases return with real Play Billing. -->
           <button class="btn btn-danger" id="btn-reset">Reset progress</button>

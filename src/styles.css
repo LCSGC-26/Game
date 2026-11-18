@@ -41,6 +41,16 @@
      copy stays on the system font, which is more legible at small sizes. */
   --font-display: 'Baloo 2', ui-rounded, 'Segoe UI Rounded', system-ui, sans-serif;
   --ink: #2a1c33;
+  /* Kiln heat: face, rim (the solid underside) and lettering for each state. */
+  --heat-warm: #e8a33d;
+  --heat-warm-edge: #a86f18;
+  --heat-warm-ink: #2a2110;
+  --heat-hot: #e0561f;
+  --heat-hot-edge: #8f2e0c;
+  --heat-hot-ink: #fff3e8;
+  --heat-white: #fff4e0;
+  --heat-white-edge: #d9922e;
+  --heat-white-ink: #5a3410;
 }
 
 * {
@@ -293,6 +303,103 @@ body {
   justify-content: space-between;
   gap: 12px;
   min-height: 48px;
+}
+
+.bar-end {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.row-stack {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+/* Kiln heat: a three-way strip, the lit segment pressed up like the shop tabs. */
+.heat-seg {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  padding: 5px;
+  border-radius: 18px;
+  background: var(--surface-edge);
+  box-shadow: inset 0 3px 5px rgba(0, 0, 0, 0.35);
+}
+
+.heat-seg button {
+  appearance: none;
+  border: 0;
+  border-radius: 13px;
+  padding: 9px 2px;
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.heat-seg button[aria-checked='true'] {
+  transform: translateY(-2px);
+  background: var(--heat-face);
+  color: var(--heat-ink);
+  box-shadow:
+    0 4px 0 var(--heat-edge),
+    inset 0 2px 0 rgba(255, 255, 255, 0.4);
+}
+
+.heat-seg button[data-heat='warm'],
+.heat-chip[data-heat='warm'] {
+  --heat-face: var(--heat-warm);
+  --heat-edge: var(--heat-warm-edge);
+  --heat-ink: var(--heat-warm-ink);
+}
+
+.heat-seg button[data-heat='hot'],
+.heat-chip[data-heat='hot'] {
+  --heat-face: var(--heat-hot);
+  --heat-edge: var(--heat-hot-edge);
+  --heat-ink: var(--heat-hot-ink);
+}
+
+.heat-seg button[data-heat='white'],
+.heat-chip[data-heat='white'] {
+  --heat-face: var(--heat-white);
+  --heat-edge: var(--heat-white-edge);
+  --heat-ink: var(--heat-white-ink);
+}
+
+/* The map's heat chip: a small capsule with a solid underside; it sinks when pressed. */
+.heat-chip {
+  appearance: none;
+  border: 3px solid var(--heat-edge);
+  border-radius: 999px;
+  padding: 3px 12px;
+  background: var(--heat-face);
+  color: var(--heat-ink);
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 0.85rem;
+  cursor: pointer;
+  box-shadow:
+    0 3px 0 var(--heat-edge),
+    inset 0 2px 0 rgba(255, 255, 255, 0.4);
+}
+
+.heat-float {
+  position: absolute;
+  top: 70px;
+  right: 14px;
+  z-index: 2;
+}
+
+.heat-chip:active {
+  transform: translateY(3px);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.4);
 }
 
 .row small {

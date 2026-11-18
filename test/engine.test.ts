@@ -4,7 +4,7 @@ import { describe, it } from 'node:test';
 
 import { applyMove, blockFitsGate, isSolved, legalMoves, maxSlide } from '../src/engine/board.ts';
 import { solve } from '../src/engine/solver.ts';
-import { generateLevel, profileForLevel } from '../src/engine/generator.ts';
+import { generateLevel, measureDifficulty, profileForLevel } from '../src/engine/generator.ts';
 import { cloneLevel, type Level } from '../src/engine/types.ts';
 
 function level(overrides: Partial<Level> = {}): Level {
@@ -212,13 +212,25 @@ describe('the shipped level pack', () => {
   });
 
   it('starts gently and does not spike', () => {
-    const first = pack.levels.slice(0, 5);
-    for (const level of first) {
+    // Levels 1 to 3 teach the rules; the planning starts at level 4.
+    for (const level of pack.levels.slice(0, 3)) {
       assert.ok(level.minMoves <= 8, `level ${level.id} is too long for an opener`);
+    }
+    for (const level of pack.levels.slice(3, 10)) {
+      assert.ok(level.minMoves <= 12, `level ${level.id} is too long this early`);
     }
     const hardest = Math.max(...pack.levels.map((l) => l.minMoves));
     assert.ok(hardest <= 25, 'no level should need an unreasonable number of moves');
   });
+});
+
+it('needs planning, not just sliding blocks out', () => {
+  // Planning depth: the longest run of setup moves before a block can leave.
+  // The 1.1 pack had 146 of 200 levels at depth 1 or less, which testers
+  // called too easy. From level 4 almost every level should need a plan.
+  const pack = JSON.parse(readFileSync(new URL('../src/game/levels.json', import.meta.url), 'utf8')) as { levels: Level[] };
+  const shallow = pack.levels.slice(3).filter((l) => measureDifficulty(l).depth <= 1).length;
+  assert.ok(shallow <= 30, `${shallow} levels after level 3 need no planning`);
 });
 
 describe('freshly generated levels', () => {

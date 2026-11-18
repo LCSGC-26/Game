@@ -1,26 +1,40 @@
 /**
  * Level access.
  *
- * The pack is generated and verified at build time (see
- * scripts/build-levels.ts), so start-up costs a JSON parse rather than a
- * second of search per level on the player's phone.
+ * The packs are generated and verified at build time (see
+ * scripts/build-levels.ts), so start-up costs a JSON parse rather than
+ * seconds of search per level on the player's phone. There is one pack per
+ * Kiln heat; every pack has the same level numbers.
  */
 
+import type { Heat } from '../engine/generator.ts';
 import type { Level } from '../engine/types.ts';
-import pack from './levels.json';
+import warmPack from './levels.json';
+import hotPack from './levels-hot.json';
+import whitePack from './levels-white.json';
 
 interface Pack {
   version: number;
   levels: Level[];
 }
 
-const data = pack as unknown as Pack;
+const PACKS: Record<Heat, Pack> = {
+  warm: warmPack as unknown as Pack,
+  hot: hotPack as unknown as Pack,
+  white: whitePack as unknown as Pack,
+};
 
-export const LEVEL_COUNT = data.levels.length;
+/**
+ * Version of the Warm pack. 1 shipped up to 1.1.1; 2 rebuilt levels 4 to 200
+ * for more planning (see migrate.ts).
+ */
+export const PACK_VERSION = PACKS.warm.version;
 
-export function getLevel(id: number): Level | null {
+export const LEVEL_COUNT = PACKS.warm.levels.length;
+
+export function getLevel(id: number, heat: Heat = 'warm'): Level | null {
   if (!Number.isInteger(id) || id < 1 || id > LEVEL_COUNT) return null;
-  return data.levels[id - 1];
+  return PACKS[heat].levels[id - 1] ?? null;
 }
 
 export function hasLevel(id: number): boolean {
