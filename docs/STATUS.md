@@ -3,6 +3,23 @@
 Where the project stands, and what a cold start needs to know. Sessions run in
 an ephemeral container, so this file is the handover.
 
+## 1.2.0 (18 November 2026): harder levels and Kiln heat
+
+From closed-test feedback ("too easy, no way to make it harder").
+
+- Levels 4 to 200 rebuilt for planning depth (the longest run of setup
+  moves before a block can leave): average 3.46, was about 1.4. Levels 1 to
+  3 are unchanged. Measured by `node scripts/_stats.ts`.
+- Kiln heat in Settings and on the level map: Warm, Hot (depth 4.05),
+  White-hot (4.28), each a pre-built pack (`src/game/levels*.json`).
+  Rebuild with `npm run levels -- 200` (about 80 minutes on 11 processes;
+  `--only heat:from-to` rebuilds a range).
+- Old saves keep their stars (`src/game/migrate.ts`).
+- versionCode 5, signed bundle built 18 November. Not uploaded yet.
+- Next update (owner's order): stacked pots at level 10, raw clay and
+  kiln tiles at 30, wet clay at 60, kiln doors at 100; then tray rims
+  (neon, lava, raku, celadon), tray colours, exit and win effects.
+
 ## Why it was paused, and why it is back
 
 It was paused on 21 September over Play's closed-test rule for personal
