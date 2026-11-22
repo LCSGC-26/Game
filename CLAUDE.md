@@ -94,7 +94,7 @@ Run `npm test` and `npm run typecheck` before every commit.
 ## Git
 
 Work continues on branch `claude/game-research-replication-s2an9t` (draft
-PR #1 on `luan-c25/game`). Commit in small, verified steps with descriptive
+PR #1 on `LCSGC-26/Game`; the account was `Luan-C25` until November 2026). Commit in small, verified steps with descriptive
 messages, and push when a step is complete.
 
 ## Open decisions (ask the owner)

@@ -145,7 +145,7 @@ board, friendlier music, and a Levels button on the win screen.
 
 - **Email:** `luanchild15@gmail.com` (shown publicly on the listing; also the
   privacy policy's contact)
-- **Privacy policy:** `https://luan-c25.github.io/glazeway-privacy/`
+- **Privacy policy:** `https://lcsgc-26.github.io/glazeway-privacy/`
 - **Website:** optional
 - **Phone:** optional, leave blank
 

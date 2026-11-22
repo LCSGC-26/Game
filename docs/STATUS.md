@@ -188,8 +188,8 @@ Done by the owner in Play Console, step by step:
 - **App created**: "Glazeway: Colour Block Puzzle", `com.tilekiln.glazeway`,
   English (Australia), Game, Free, Play App Signing accepted (Google holds the
   app signing key; `glazeway-upload.jks` is the upload key).
-- **Privacy policy** live at https://luan-c25.github.io/glazeway-privacy/ (repo
-  `Luan-C25/glazeway-privacy`, a copy of `store/PRIVACY.md`; keep them in step).
+- **Privacy policy** live at https://lcsgc-26.github.io/glazeway-privacy/ (repo
+  `LCSGC-26/glazeway-privacy`, a copy of `store/PRIVACY.md`; keep them in step).
   Contact email: luanchild15@gmail.com.
 - **App content**: no restricted access; contains ads; content rating
   questionnaire all No; target audience 13–15, 16–17, 18+ only; Data safety as
