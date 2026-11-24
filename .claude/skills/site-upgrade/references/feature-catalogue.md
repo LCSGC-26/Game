@@ -12,6 +12,15 @@ Format: **Feature** — applies when · how · check.
 7. **Comparison tray** — choose-between-N items · persistent "My comparison (n)" counter, side-by-side inclusions · works without login (localStorage in try/catch).
 8. **Programmatic SEO pages** — many similar entities · one template per service/provider/guide, data from one JSON/JS file · unique title/description per page, internal links.
 
+9a. **Dual CTA** — products with self-serve + sales · "Get X free" / "Start now" beside "Contact sales/Request a demo" (Stripe, Notion, Linear, Framer).
+9b. **Use cases as concrete jobs** — product sites · gallery of "Resolve support tickets in Slack"-style tasks instead of feature names (Notion, Raycast).
+9c. **Shipping cadence as proof** — anything updated often · changelog / "Now" / "Recently shipped" strip (Linear, Vercel); for games a devlog + patch notes.
+9d. **Customer stories led by a number** — B2B · headline contains the metric (Stripe).
+9e. **Retention loop outside the landing page** — games/apps · return reason (daily challenge, streak, leaderboard), shareable result card, newsletter/changelog; Riot's front page is a content feed, Supercell recruits via culture pages.
+9f. **Light/dark support** — dev/consumer tools · tokens flip via `prefers-color-scheme` + `data-theme` override, `<meta name="theme-color">` (Linear, Vercel).
+9g. **Security headers** — any deployed site · HSTS (preload), CSP, `frame-ancestors` (Stripe, Vercel, Linear all ship them).
+9h. **Brand-asset menu** — brands others write about · logo "Copy SVG" + brand guidelines link (Framer).
+
 ## B. SEO & sharing
 9. **Meta set** — always · unique title ≤60, description ≤160, canonical, `og:*`, `twitter:card=summary_large_image`, 1200×630 image, `lang`/locale.
 10. **JSON-LD** — always · Organization + WebSite; `VideoGame`/`WebApplication`/`Product`/`LocalBusiness`/`FAQPage`/`VideoObject` as relevant · validate in Rich Results Test (outside sandbox).

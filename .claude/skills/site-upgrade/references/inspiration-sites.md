@@ -3,12 +3,14 @@
 Status key: **Opened** = fetched and read in-session; **Search-only** = known from search results/third-party write-ups, NOT opened (verify before relying on it). The sandbox network is allowlisted; to open a new site ask the user to add the exact host.
 
 ## Opened
+See `opened-sites-notes.md` for the detailed per-site table (Linear, Raycast, Stripe, Vercel, Notion, Framer, Apple, Supercell, Riot Games, Duolingo meta).
+
 | Site | Take |
 |---|---|
 | https://nextgambit.com.au | Hero formula, film-led case studies, token-first dark/acid palette, SEO + video sitemap, honest "illustrative" labels. See `docs/design-lessons.md`. |
 | https://detailscout.com.au | Tiny static build (~100 KB), provenance + "last checked", comparison tray, programmatic service/provider pages, Pause-motion control. |
 
-## Search-only (verify)
+## Search-only (verify) — superseded where noted above; remaining unopened: Awwwards (connection reset), itch.io (429), SaaSFrame, Game Developer lists
 | Site / source | Pattern to study |
 |---|---|
 | Linear (linear.app) | Near-black UI, real product screenshots doing the selling, precise type, command-palette culture; scroll animations are costly — don't overdo. |
