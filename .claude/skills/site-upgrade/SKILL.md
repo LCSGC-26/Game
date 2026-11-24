@@ -5,7 +5,7 @@ description: Audit a website, web app or browser game in this repo and iterate i
 
 # site-upgrade
 
-Apply lessons from nextgambit.com.au, detailscout.com.au and common patterns on top pro sites. Only add a feature when it fits THIS project's goal and audience — never bolt everything on.
+Apply lessons from 12 sites read first-hand (nextgambit.com.au, detailscout.com.au, Linear, Raycast, Stripe, Vercel, Notion, Framer, Apple, Supercell, Riot Games, Duolingo meta) plus common pro-site patterns. Only add a feature when it fits THIS project's goal and audience — never bolt everything on.
 
 ## Procedure (follow in order)
 
@@ -25,7 +25,22 @@ Apply lessons from nextgambit.com.au, detailscout.com.au and common patterns on 
 - If the project is a game: read the "Game pages" section of the catalogue first.
 - Update `docs/design-lessons.md` / the catalogue when you learn something new that generalises.
 
+## How to invoke
+- In this repo: `/site-upgrade` (optionally add a focus, e.g. `/site-upgrade landing page for the game` or `/site-upgrade retention`), or just say "improve/polish this site".
+- In other repos: copy `.claude/skills/site-upgrade/` into that repo, or into `~/.claude/skills/site-upgrade/` to use it everywhere.
+- Focus modes (pick from the user's wording): **landing/conversion** (catalogue A + 9a–9d), **retention/engagement** (9c, 9e, game section F), **performance** (C), **SEO** (B), **accessibility** (D), **visual polish** (E, 9f), **full audit** (all).
+
+## Retention checklist (for games/apps; the pro sites do this off the landing page)
+Return reason (daily challenge / streak / leaderboard) · shareable result card with OG image · devlog/changelog page linked in nav · newsletter or "notify me" · save progress safely · fast first-play (<3 s to interactive, no signup wall) · clear "what's new" on return.
+
+## Output format for step 6
+1. Audit table (feature · status · evidence). 2. Shortlist (≤5, with why). 3. Diff summary + screenshots/measurements. 4. Next 3 candidates. Keep it under ~40 lines.
+
+## Known limits
+Reference notes come from server-rendered HTML only (no animation/runtime/logged-in views). Treat them as patterns to verify, not specs. Refresh `references/opened-sites-notes.md` when asked to learn from new sites (fetch with curl, record purpose, patterns, anti-pattern, stack).
+
 ## References
 - `references/feature-catalogue.md` — the checklist with how-to snippets and "when it applies".
-- `references/inspiration-sites.md` — sites worth studying and what to take from each.
+- `references/opened-sites-notes.md` — first-hand per-site table, cross-site patterns, anti-patterns.
+- `references/inspiration-sites.md` — index of opened and still-unopened sites.
 - `docs/design-lessons.md` — full analysis of nextgambit.com.au / detailscout.com.au.
