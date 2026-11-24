@@ -96,7 +96,7 @@ Since there is no code yet, apply these when starting:
 
 ## 6. Anti-patterns / risks observed (avoid)
 
-- **Heavy third-party tracking** (GA4 + Meta Pixel + first-party analytics + concierge widget) with no visible cookie/consent banner on first load — privacy/ACL risk and perf cost.
+- **Heavy third-party tracking** (GA4 + Meta Pixel + first-party analytics + concierge widget) with no cookie-consent banner found in the server-rendered HTML (one may load client-side; not verified) — privacy risk and perf cost.
 - **Autoplay-style media weight:** hero film + showreel + multiple posters on the homepage; first load is ~88 KB HTML but pulls ~30 module chunks. Lazy-load below-the-fold media.
 - **HTML `cache-control: max-age=0, must-revalidate`** is fine, but no CDN-level static caching hints for pages.
 - **Mojibake risk:** link arrows rendered as `â†—` when the response was read without charset assumptions — always send `Content-Type: text/html; charset=utf-8` and `<meta charset>` early (the site does; it only shows when a client mis-decodes), and prefer SVG icons over Unicode arrows.
