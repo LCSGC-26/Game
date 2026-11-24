@@ -17,3 +17,6 @@ Full analysis and checklist: `docs/design-lessons.md`. When creating or editing 
 9. Prefer plain HTML/CSS/JS for small static sites (DetailScout ships ~100 KB total); reach for a framework only when needed.
 
 Before finishing UI work, run through the checklist in `docs/design-lessons.md` §7.
+
+## Reusable skill
+For any request to improve, polish, upgrade or build a site/game page, use the project skill `.claude/skills/site-upgrade/SKILL.md` (audit → shortlist ≤5 → implement → verify). Its checklist lives in `.claude/skills/site-upgrade/references/feature-catalogue.md`; inspiration sites in `references/inspiration-sites.md`.
