@@ -1286,7 +1286,7 @@ function checkComplete(): void {
   }, reveal);
 }
 
-/** Win-card line comparing the result with par. Under par is possible: a drag that turns a corner counts as one move. */
+/** Win-card line comparing the result with par. Under par gets its own line rather than "matches par". */
 function parLine(moves: number, par: number): string {
   if (moves < par) return `Solved in ${moves} moves, ${par - moves} under par of ${par}. Brilliant!`;
   if (moves === par) return `Solved in ${moves} moves. That matches par.`;
