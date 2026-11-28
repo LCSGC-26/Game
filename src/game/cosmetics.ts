@@ -36,10 +36,10 @@ export const DEFAULT_EFFECT: EffectId = 'kiln-puff';
 
 export const EFFECTS: EffectInfo[] = [
   { id: 'kiln-puff', name: 'Kiln puff', price: 0, blurb: 'Three soft puffs of kiln smoke.' },
-  { id: 'petals', name: 'Petals', price: 150, blurb: 'A small handful of petals in the tile colour.' },
+  { id: 'petals', name: 'Petals', price: 50, blurb: 'A small handful of petals in the tile colour.' },
   { id: 'glaze-splash', name: 'Glaze splash', price: 200, blurb: 'The glaze pours out at the gate.' },
   { id: 'sparks', name: 'Sparks', price: 200, blurb: 'A short burst of warm sparks off the kiln.' },
-  { id: 'steam', name: 'Steam', price: 150, blurb: 'A few wisps of steam rising from the gate.' },
+  { id: 'steam', name: 'Steam', price: 30, blurb: 'A few wisps of steam rising from the gate.' },
   { id: 'spinning-pot', name: 'Spinning pot', price: 250, blurb: 'A tiny pot in the tile colour spins out through the gate.' },
 ];
 
@@ -71,7 +71,7 @@ export const RIMS: RimInfo[] = [
   { id: 'neon-kiln', name: 'Neon kiln', price: 350, blurb: 'A band of colour that slowly circles the tray.' },
   { id: 'lava', name: 'Lava', price: 350, blurb: 'Dark basalt with a slow, glowing crack.' },
   { id: 'raku', name: 'Raku', price: 300, blurb: 'Matte black, crazed with fine gold lines.' },
-  { id: 'celadon', name: 'Celadon', price: 250, blurb: 'Pale grey-green glaze with a soft highlight.' },
+  { id: 'celadon', name: 'Celadon', price: 60, blurb: 'Pale grey-green glaze with a soft highlight.' },
 ];
 
 /** Rims that need a redraw every frame (the rest are painted once). */

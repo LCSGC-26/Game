@@ -36,7 +36,7 @@ test('lookups return known items and fall back to the defaults', () => {
 test('the new exit effects are in the catalogue at their prices', () => {
   const price = (id: string): number | undefined => EFFECTS.find((e) => e.id === id)?.price;
   assert.equal(price('sparks'), 200);
-  assert.equal(price('steam'), 150);
+  assert.equal(price('steam'), 30);
   assert.equal(price('spinning-pot'), 250);
   assert.equal(effectById('spinning-pot').id, 'spinning-pot');
 });
@@ -48,7 +48,7 @@ test('rims: unique ids, the empty theme rim is the only free one, prices as desi
   assert.equal(price('neon-kiln'), 350);
   assert.equal(price('lava'), 350);
   assert.equal(price('raku'), 300);
-  assert.equal(price('celadon'), 250);
+  assert.equal(price('celadon'), 60);
   assert.deepEqual([...ANIMATED_RIMS].sort(), ['lava', 'neon-kiln']);
 });
 

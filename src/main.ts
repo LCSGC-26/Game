@@ -921,7 +921,7 @@ function completeDaily(day: number, stars: number, moves: number): void {
   fillStars(stars);
   $('win-detail').textContent = result.firstToday
     ? `Solved in ${moves} moves. ${streak} ${streak === 1 ? 'day' : 'days'} in a row.`
-    : `Solved in ${moves} moves. Par is ${session?.par ?? moves}.`;
+    : parLine(moves, session?.par ?? moves);
   const latest = result.newBadges[result.newBadges.length - 1];
   const badge = latest ? ` New badge: ${badgeLabel(latest)}!` : '';
   $('win-reward').textContent = result.firstToday ? `+${reward} coins.${badge}` : 'Already fired today. No new coins.';
@@ -1264,10 +1264,7 @@ function checkComplete(): void {
     star.style.animationDelay = `${140 + i * 160}ms`;
     starRow.append(star);
   }
-  $('win-detail').textContent =
-    moves <= session.par
-      ? `Solved in ${moves} moves — that matches par.`
-      : `Solved in ${moves} moves. Par is ${session.par}.`;
+  $('win-detail').textContent = parLine(moves, session.par);
   $('win-reward').textContent = reward === 0
     ? 'Already cleared. No new coins.'
     : currentHeat === 'warm'
@@ -1287,6 +1284,13 @@ function checkComplete(): void {
     // The player may have left in the meantime; do not yank them back.
     if (session?.isComplete() && currentLevelId === wonLevel) $('overlay-win').hidden = false;
   }, reveal);
+}
+
+/** Win-card line comparing the result with par. Under par is possible: a drag that turns a corner counts as one move. */
+function parLine(moves: number, par: number): string {
+  if (moves < par) return `Solved in ${moves} moves, ${par - moves} under par of ${par}. Brilliant!`;
+  if (moves === par) return `Solved in ${moves} moves. That matches par.`;
+  return `Solved in ${moves} moves. Par is ${par}.`;
 }
 
 function startLevel(id: number): void {
@@ -1368,6 +1372,17 @@ const OBSTACLE_TIPS: ObstacleTip[] = [
 function showObstacleTips(level: Level): void {
   const fresh = OBSTACLE_TIPS.filter((t) => t.seenIn(level) && !saveData.tipsSeen.includes(t.id));
   if (fresh.length === 0) return;
+  showTipCard(fresh, 'New on the board');
+}
+
+/** Every obstacle card, so a tip tapped away too fast can be read again. */
+function showBoardGuide(): void {
+  showTipCard(OBSTACLE_TIPS, 'Board guide');
+}
+
+function showTipCard(tips: ObstacleTip[], heading: string): void {
+  $('tip-heading').textContent = heading;
+  const fresh = tips;
 
   const list = $('tip-list');
   list.textContent = '';
@@ -1386,7 +1401,7 @@ function showObstacleTips(level: Level): void {
     copy.append(title, text);
     row.append(icon, copy);
     list.append(row);
-    saveData.tipsSeen.push(tip.id);
+    if (!saveData.tipsSeen.includes(tip.id)) saveData.tipsSeen.push(tip.id);
   }
   persist();
   $('overlay-tip').hidden = false;
@@ -1604,6 +1619,7 @@ function bindNavigation(): void {
     hintedBlocks = [];
     requestDraw();
   });
+  $('btn-guide').addEventListener('click', showBoardGuide);
   $('tip-ok').addEventListener('click', () => {
     $('overlay-tip').hidden = true;
   });

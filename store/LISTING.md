@@ -102,6 +102,15 @@ November 2026; re-check when a feature changes.*
 
 ## Release notes (500 characters max)
 
+1.3.1:
+
+```
+Fixes from testers: beating par now says so (a drag that turns a corner
+counts as one move). Steam, Petals and the Celadon rim are now cheap starter
+items, so your first shop buy comes after a few levels. Settings has a new
+Board guide, so you can read the pot, clay, kiln and door tips any time.
+```
+
 1.3.0:
 
 ```
